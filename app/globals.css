@@ -139,3 +139,27 @@ code {
     @apply bg-background text-foreground;
     }
 }
+
+/* ---------- PRINT STYLES (Ekspor PDF Cantik) ---------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm 15mm 22mm 15mm;
+  }
+  html, body {
+    background: #fff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 11pt;
+  }
+  * { box-shadow: none !important; }
+  .print\:hidden { display: none !important; }
+  .print\:block { display: block !important; }
+  a { color: inherit !important; text-decoration: none !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  h1, h2, h3 { page-break-after: avoid; }
+  section { page-break-inside: avoid; margin-top: 8pt; }
+  .rounded-2xl, .rounded-xl { border-radius: 8px !important; }
+}

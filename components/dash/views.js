@@ -616,3 +616,149 @@ export function SettingsView() {
     </div>
   )
 }
+
+
+/* =========== EXECUTIVE SUMMARY =========== */
+export function ExecutiveSummaryView({ days }) {
+  const platforms = getPlatforms()
+  const allSeries = getAllSeries(Math.max(days*2+5, 200))
+  const { perPlatformCurr, perPlatformPrev, totalsCurr, totalsPrev, mergedDaily } = useMemo(() => aggregatePeriod(platforms, allSeries, days), [days, platforms, allSeries])
+  const w = useMemo(() => generateWebsite(days), [days])
+  const items = useMemo(() => generateContentItems(days), [days])
+  const [aiSummary, setAiSummary] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  // Compute overall score (0-100) from key indicators
+  const scoreParts = {
+    engRate: Math.min(totalsCurr.engagementRate / 8, 1) * 30,
+    reachGrowth: Math.max(0, Math.min(pctChange(totalsCurr.reach, totalsPrev.reach)/30, 1)) * 20,
+    followerGrowth: Math.max(0, Math.min(pctChange(totalsCurr.followers, totalsPrev.followers)/8, 1)) * 20,
+    contentVolume: Math.min(totalsCurr.contentPublished / 200, 1) * 15,
+    webGrowth: Math.max(0, Math.min(pctChange(w.totals.users, Math.round(w.totals.users*0.92))/15, 1)) * 15,
+  }
+  const overallScore = Math.round(Object.values(scoreParts).reduce((a,v)=>a+v,0))
+  const cat = scoreCategory(overallScore)
+
+  // Auto-derive 3 best / 3 concerns / 3 recs
+  const perRanked = Object.entries(perPlatformCurr).filter(([k])=>k!=='website').map(([k,v]) => ({ k, ...v, change: pctChange(v.engagement, perPlatformPrev[k].engagement) })).sort((a,b)=>b.change-a.change)
+  const topContent = [...items].sort((a,b)=>b.score-a.score)[0]
+  const bests = [
+    perRanked[0] && `${labelOf(perRanked[0].k)} tumbuh ${perRanked[0].change>=0?'+':''}${perRanked[0].change}% engagement — kanal berperforma terbaik periode ini.`,
+    topContent && `Konten "${topContent.title}" (${topContent.platformName}) meraih skor ${topContent.score}/100.`,
+    totalsCurr.engagementRate >= 5 && `Engagement rate ${totalsCurr.engagementRate}% berada di atas benchmark industri (3-5%).`,
+    w.totals.bounce < 50 && `Bounce rate website ${w.totals.bounce}% dalam batas sehat.`,
+    totalsCurr.followerGrowth > 0 && `Follower gabungan bertambah +${formatNumber(totalsCurr.followerGrowth)} pengguna baru.`,
+  ].filter(Boolean).slice(0, 3)
+
+  const concerns = [
+    perRanked[perRanked.length-1] && perRanked[perRanked.length-1].change < 0 && `${labelOf(perRanked[perRanked.length-1].k)} turun ${perRanked[perRanked.length-1].change}% — butuh evaluasi strategi.`,
+    totalsCurr.engagementRate < 3 && `Engagement rate ${totalsCurr.engagementRate}% di bawah benchmark — konten belum resonan.`,
+    w.totals.bounce >= 55 && `Bounce rate website ${w.totals.bounce}% cukup tinggi — audit landing page.`,
+    pctChange(totalsCurr.contentPublished, totalsPrev.contentPublished) < -15 && `Frekuensi publikasi turun ${Math.abs(pctChange(totalsCurr.contentPublished, totalsPrev.contentPublished))}% — jaga kontinuitas.`,
+    pctChange(totalsCurr.reach, totalsPrev.reach) < -10 && `Total reach menurun ${Math.abs(pctChange(totalsCurr.reach, totalsPrev.reach))}% — distribusi konten perlu dioptimalkan.`,
+    'Ketergantungan pada 2 platform teratas cukup tinggi — perlu diversifikasi kanal.',
+  ].filter(Boolean).slice(0, 3)
+
+  const recs = [
+    'Perbanyak format video pendek (Reels/Short/TikTok) 2-3x per minggu untuk mempertahankan engagement.',
+    'Fokuskan tema pilar pada Sertifikasi Kompetensi, Kisah Alumni, dan Program Vokasi Prioritas.',
+    'Jadwalkan posting utama pada jam 19.00-21.00 WIB — window peak audiens Indonesia.',
+  ]
+
+  async function runAI() {
+    setLoading(true)
+    try {
+      const context = { periode_hari: days, overall_score: overallScore, category: cat.label, totals: totalsCurr, previous: totalsPrev, per_platform: perPlatformCurr, website: w.totals, top_content: topContent && { title: topContent.title, platform: topContent.platformName, score: topContent.score } }
+      const r = await fetch('/api/ai-insights', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ context, scope:'executive-summary-paragraphs' }) })
+      const j = await r.json()
+      if (j.insights) {
+        // Merge into 5 short paragraphs
+        const paragraphs = []
+        if (j.insights.findings?.length) paragraphs.push(j.insights.findings.slice(0,2).join(' '))
+        if (j.insights.opportunities?.length) paragraphs.push(j.insights.opportunities[0])
+        if (j.insights.risks?.length) paragraphs.push(j.insights.risks[0])
+        if (j.insights.actions?.length) paragraphs.push(j.insights.actions.slice(0,2).join(' '))
+        if (j.insights.ideas?.length) paragraphs.push('Ide konten berikutnya: ' + j.insights.ideas[0])
+        setAiSummary(paragraphs.slice(0,5))
+      }
+    } catch (e) { console.error(e) }
+    setLoading(false)
+  }
+
+  const trend = mergedDaily.map(r => ({ ...r, engagementRate: r.reach>0 ? +(r.engagement/r.reach*100).toFixed(2) : 0 }))
+
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Hero */}
+      <div className="rounded-3xl overflow-hidden shadow-xl border border-slate-200">
+        <div className="bg-gradient-to-br from-[#0B2545] via-[#123572] to-[#1D4ED8] text-white p-8">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200/80 font-semibold">Executive Summary · Untuk Pimpinan</div>
+              <h2 className="text-2xl font-bold mt-2">Performa Digital Periode Ini</h2>
+              <p className="text-sm text-blue-100/80 mt-1">{days} hari terakhir · Direktorat Kursus dan Pelatihan</p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-widest text-blue-200/70">Overall Score</div>
+                <div className="text-6xl font-black leading-none mt-1">{overallScore}<span className="text-2xl opacity-70">/100</span></div>
+                <div className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: cat.color+'30', color:'#fff', border:`1px solid ${cat.color}` }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: cat.color }} />{cat.label}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Big KPIs */}
+        <div className="bg-white grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100">
+          {[
+            { l:'Follower Growth', v:`+${formatNumber(totalsCurr.followerGrowth)}`, c: pctChange(totalsCurr.followers, totalsPrev.followers) },
+            { l:'Reach Growth', v: formatNumber(totalsCurr.reach), c: pctChange(totalsCurr.reach, totalsPrev.reach) },
+            { l:'Engagement Growth', v: formatNumber(totalsCurr.engagement), c: pctChange(totalsCurr.engagement, totalsPrev.engagement) },
+            { l:'Website Traffic', v: formatNumber(w.totals.users), c: pctChange(w.totals.users, Math.round(w.totals.users*0.92)) },
+          ].map(k => (
+            <div key={k.l} className="p-5 text-center">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{k.l}</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{k.v}</div>
+              <div className={`text-xs font-semibold mt-1 ${k.c>=0?'text-emerald-600':'text-red-500'}`}>{k.c>=0?'▲ +':'▼ '}{k.c}%</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Three columns: Best / Concerns / Recs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="rounded-2xl bg-emerald-50/60 border border-emerald-200 p-5">
+          <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center"><CheckCircle2 className="w-5 h-5" /></div><h3 className="font-bold text-emerald-900">3 Hal Terbaik</h3></div>
+          <ol className="space-y-2.5">{bests.map((b,i)=><li key={i} className="text-sm text-emerald-900/90 flex gap-2"><span className="font-bold text-emerald-700">{i+1}.</span><span>{b}</span></li>)}</ol>
+        </div>
+        <div className="rounded-2xl bg-amber-50/60 border border-amber-200 p-5">
+          <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center"><XCircle className="w-5 h-5" /></div><h3 className="font-bold text-amber-900">3 Hal Perlu Diperhatikan</h3></div>
+          <ol className="space-y-2.5">{concerns.map((c,i)=><li key={i} className="text-sm text-amber-900/90 flex gap-2"><span className="font-bold text-amber-700">{i+1}.</span><span>{c}</span></li>)}</ol>
+        </div>
+        <div className="rounded-2xl bg-blue-50/60 border border-blue-200 p-5">
+          <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center"><Rocket className="w-5 h-5" /></div><h3 className="font-bold text-blue-900">3 Rekomendasi Utama</h3></div>
+          <ol className="space-y-2.5">{recs.map((r,i)=><li key={i} className="text-sm text-blue-900/90 flex gap-2"><span className="font-bold text-blue-700">{i+1}.</span><span>{r}</span></li>)}</ol>
+        </div>
+      </div>
+
+      {/* AI Summary paragraphs */}
+      <Card title="Ringkasan AI untuk Pimpinan" desc="Analisis eksekutif maksimal 5 paragraf pendek — Bahasa Indonesia" right={<button onClick={runAI} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0B2545] text-white text-xs font-medium hover:bg-[#0e2f5c] disabled:opacity-60"><Sparkles className={`w-3.5 h-3.5 ${loading?'animate-pulse':''}`} />{loading?'Menganalisis…':'Generate AI Summary'}</button>}>
+        {!aiSummary && <p className="text-sm text-slate-500 italic">Klik tombol "Generate AI Summary" untuk memperoleh ringkasan naratif berbasis LLM (Claude Sonnet 4.5) untuk keperluan pimpinan.</p>}
+        {aiSummary && <div className="space-y-3">{aiSummary.map((p,i)=>(<p key={i} className="text-sm text-slate-700 leading-relaxed">{p}</p>))}</div>}
+      </Card>
+
+      {/* Mini trend */}
+      <Card title="Tren Engagement Rate Periode Ini" desc="Konsistensi performa harian">
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={trend}>
+            <defs><linearGradient id="exG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1D4ED8" stopOpacity={0.35} /><stop offset="100%" stopColor="#1D4ED8" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} />
+            <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={v=>v+'%'} />
+            <Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} />
+            <Area type="monotone" name="Eng. Rate" dataKey="engagementRate" stroke="#1D4ED8" strokeWidth={2.4} fill="url(#exG)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </Card>
+    </div>
+  )
+}
