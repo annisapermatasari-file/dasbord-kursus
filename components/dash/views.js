@@ -8,6 +8,7 @@ import {
   ArrowUpRight, Trophy, TrendingUp, Users, Heart, Play, Clock, MousePointer, Eye,
   FileText, Printer, Download, Search, Filter, Award, CheckCircle2, XCircle, Rocket, Info, Settings as SettingsIcon,
   Instagram, Facebook, Youtube, Music2, Globe, Building2, ShieldCheck, ChevronRight, Sparkles,
+  Calendar as CalendarIcon, GitCompareArrows,
 } from 'lucide-react'
 import {
   getPlatforms, findPlatform, getAllSeries, sliceByDays, aggregate, pctChange, formatNumber,
@@ -744,12 +745,35 @@ export function SettingsView() {
             )}
           </Card>
 
-          <Card title="TikTok Business API" desc="Belum tersambung — perlu credentials tambahan">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:'#11182718', color:'#111827' }}><Music2 className="w-5 h-5" /></div>
-              <div className="flex-1"><div className="font-medium text-slate-900">TikTok Business API</div><div className="text-xs text-slate-500">Perlu App ID + Secret dari <a href="https://developers.tiktok.com/" className="text-blue-600 underline" target="_blank">TikTok for Developers</a> · Membutuhkan approval TikTok</div></div>
-              <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">Mock Data</span>
-            </div>
+          <Card title="TikTok Business API" desc="Hubungkan akun TikTok Business/Creator untuk analitik follower dan video">
+            {(() => {
+              const tt = conns.find(c => c.provider === 'tiktok')
+              const [credCheck, setCredCheck] = [null, ()=>{}] // just derived
+              return (
+                <div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:'#11182718', color:'#111827' }}><Music2 className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0">
+                      {tt ? (
+                        <><div className="text-sm font-medium text-emerald-700">✅ Tersambung sebagai {tt.user?.display_name || 'TikTok User'}</div>
+                        <div className="text-xs text-slate-500">{formatNumber(tt.user?.follower_count||0)} followers · {formatNumber(tt.user?.video_count||0)} videos · Diperbarui {tt.updated_at ? new Date(tt.updated_at).toLocaleString('id-ID') : '—'}</div></>
+                      ) : (
+                        <><div className="font-medium text-slate-900">Belum tersambung</div>
+                        <div className="text-xs text-slate-500">Set env <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_KEY</code> &amp; <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_SECRET</code> dari <a href="https://developers.tiktok.com/" className="text-blue-600 underline" target="_blank">TikTok for Developers</a>, dan daftarkan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/tiktok/callback</code></div></>
+                      )}
+                    </div>
+                    {tt ? (
+                      <>
+                        <button onClick={()=>openOauth('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
+                        <button onClick={()=>disconnect('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
+                      </>
+                    ) : (
+                      <button onClick={()=>openOauth('tiktok')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-black text-white text-sm font-medium hover:bg-slate-800"><Music2 className="w-4 h-4" />Hubungkan TikTok</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </Card>
         </div>
       )}
@@ -909,3 +933,356 @@ export function ExecutiveSummaryView({ days }) {
     </div>
   )
 }
+
+/* =========== CONTENT CALENDAR =========== */
+const STATUS_CFG = {
+  Draft:      { bg:'bg-slate-100', text:'text-slate-700', ring:'ring-slate-300', dot:'#94a3b8' },
+  Scheduled:  { bg:'bg-amber-100', text:'text-amber-800', ring:'ring-amber-300', dot:'#f59e0b' },
+  Published:  { bg:'bg-emerald-100', text:'text-emerald-800', ring:'ring-emerald-300', dot:'#10b981' },
+}
+const LS_KEY = 'content_calendar_v1'
+
+export function ContentCalendarView() {
+  const platforms = getPlatforms().filter(p => p.key !== 'website')
+  const today = new Date(); today.setHours(0,0,0,0)
+  const [monthOffset, setMonthOffset] = useState(0)
+  const [platformFilter, setPlatformFilter] = useState('all')
+  const [items, setItems] = useState([])
+  const [modal, setModal] = useState(null) // { date, item? }
+
+  // Seed with published (past) + scheduled (future)
+  useEffect(() => {
+    let seeded = null
+    try { seeded = JSON.parse(localStorage.getItem(LS_KEY) || 'null') } catch {}
+    if (seeded && Array.isArray(seeded) && seeded.length) { setItems(seeded); return }
+    // First load: generate seed
+    const past = generateContentItems(30).slice(0, 40).map(c => ({
+      id: c.id, date: c.date, platform: c.platform, type: c.type, topic: c.topic, title: c.title, status: 'Published', engagement: c.engagement, score: c.score,
+    }))
+    const future = []
+    const templates = [
+      { type:'Reels', topic:'Kursus Vokasi', title:'Peluang Karier Vokasi 2025', platform:'instagram' },
+      { type:'Short', topic:'Kisah Alumni', title:'Testimoni Alumni Sertifikasi BNSP', platform:'youtube' },
+      { type:'Video', topic:'Green Skill', title:'Tips Karier Green Skill', platform:'tiktok' },
+      { type:'Article', topic:'Program Prioritas', title:'Pengumuman Program Prioritas 2025', platform:'facebook' },
+      { type:'Carousel', topic:'Beasiswa', title:'Info Beasiswa Kursus', platform:'instagram' },
+      { type:'Feed', topic:'Kolaborasi Industri', title:'MoU dengan Industri Manufaktur', platform:'facebook' },
+      { type:'Video', topic:'Digital Skill', title:'Live Kelas Digital Marketing', platform:'youtube' },
+      { type:'Reels', topic:'LKP Unggulan', title:'Sorotan LKP Unggulan Provinsi', platform:'instagram' },
+      { type:'Video', topic:'Kewirausahaan', title:'Wirausaha Muda dari Program Kursus', platform:'tiktok' },
+      { type:'Feed', topic:'Pelatihan Kerja', title:'Batch Pendaftaran Terbaru', platform:'facebook' },
+    ]
+    for (let i = 0; i < 22; i++) {
+      const t = templates[i % templates.length]
+      const d = new Date(today); d.setDate(d.getDate() + 1 + i)
+      future.push({ id: `plan-${i}`, date: d.toISOString().slice(0,10), platform: t.platform, type: t.type, topic: t.topic, title: t.title, status: i % 3 === 2 ? 'Draft' : 'Scheduled' })
+    }
+    const all = [...past, ...future]
+    setItems(all)
+    try { localStorage.setItem(LS_KEY, JSON.stringify(all)) } catch {}
+  }, [])
+
+  const persist = (next) => { setItems(next); try { localStorage.setItem(LS_KEY, JSON.stringify(next)) } catch {} }
+
+  // Compute current month grid
+  const anchor = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  const monthName = anchor.toLocaleDateString('id-ID', { month:'long', year:'numeric' })
+  const firstDay = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+  const startWeekday = (firstDay.getDay() + 6) % 7 // Mon = 0
+  const daysInMonth = new Date(anchor.getFullYear(), anchor.getMonth()+1, 0).getDate()
+  const cells = []
+  for (let i = 0; i < startWeekday; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(anchor.getFullYear(), anchor.getMonth(), d))
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const filtered = items.filter(it => platformFilter === 'all' || it.platform === platformFilter)
+  const itemsOn = (d) => { if (!d) return []; const iso = d.toISOString().slice(0,10); return filtered.filter(it => it.date === iso) }
+  const upcoming = filtered.filter(it => new Date(it.date) >= today && it.status !== 'Published').sort((a,b)=>a.date.localeCompare(b.date)).slice(0, 12)
+
+  function saveItem(payload) {
+    if (payload.id && items.find(i => i.id === payload.id)) persist(items.map(i => i.id === payload.id ? { ...i, ...payload } : i))
+    else persist([...items, { ...payload, id: 'user-' + Date.now() }])
+    setModal(null)
+  }
+  function delItem(id) { persist(items.filter(i => i.id !== id)); setModal(null) }
+
+  // Stats
+  const stats = {
+    total: filtered.length,
+    scheduled: filtered.filter(i => i.status === 'Scheduled').length,
+    draft: filtered.filter(i => i.status === 'Draft').length,
+    published: filtered.filter(i => i.status === 'Published').length,
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header + filters */}
+      <Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button onClick={()=>setMonthOffset(m => m-1)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">‹</button>
+            <div className="min-w-[180px] text-center"><div className="text-[10px] uppercase text-slate-500 tracking-wider">Bulan</div><div className="font-semibold text-slate-900 capitalize">{monthName}</div></div>
+            <button onClick={()=>setMonthOffset(m => m+1)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">›</button>
+            <button onClick={()=>setMonthOffset(0)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs">Bulan ini</button>
+          </div>
+          <Select label="Platform" value={platformFilter} onChange={setPlatformFilter} options={[{v:'all',l:'Semua Platform'}, ...platforms.map(p=>({v:p.key,l:p.name}))]} />
+          <div className="ml-auto flex items-center gap-3 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Draft.dot }} />Draft: <strong>{stats.draft}</strong></span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Scheduled.dot }} />Terjadwal: <strong>{stats.scheduled}</strong></span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Published.dot }} />Terbit: <strong>{stats.published}</strong></span>
+          </div>
+          <button onClick={()=>setModal({ date: today.toISOString().slice(0,10) })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0B2545] text-white text-sm font-medium hover:bg-[#0e2f5c]">+ Konten Baru</button>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Calendar grid */}
+        <div className="xl:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="grid grid-cols-7 bg-slate-50/70 text-[11px] uppercase font-semibold text-slate-500 tracking-wider">
+            {['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map(d => <div key={d} className="px-3 py-2.5 text-center">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7">
+            {cells.map((d, i) => {
+              const inMonth = !!d
+              const isToday = d && d.getTime() === today.getTime()
+              const dayItems = itemsOn(d)
+              return (
+                <div key={i} onClick={()=>d && setModal({ date: d.toISOString().slice(0,10) })}
+                  className={`min-h-[110px] p-2 border-b border-r border-slate-100 relative group cursor-pointer ${inMonth ? 'bg-white hover:bg-blue-50/40' : 'bg-slate-50/40'}`}>
+                  {inMonth && (<>
+                    <div className={`text-xs font-semibold mb-1 ${isToday ? 'inline-flex w-6 h-6 rounded-full bg-blue-600 text-white items-center justify-center' : 'text-slate-500'}`}>{d.getDate()}</div>
+                    <div className="space-y-1">
+                      {dayItems.slice(0,3).map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; return (
+                        <div key={it.id} onClick={(e)=>{ e.stopPropagation(); setModal({ date: it.date, item: it }) }}
+                          className={`text-[10px] px-1.5 py-0.5 rounded truncate flex items-center gap-1 ${st.bg} ${st.text} ring-1 ${st.ring}`}
+                          title={it.title}>
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: colorOf(it.platform) }} />
+                          <span className="truncate">{it.title}</span>
+                        </div>) })}
+                      {dayItems.length > 3 && <div className="text-[10px] text-slate-500">+{dayItems.length-3} lainnya</div>}
+                    </div>
+                  </>)}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Upcoming sidebar */}
+        <div className="space-y-4">
+          <Card title="🗓️ Akan Tayang" desc={`${upcoming.length} konten terjadwal`}>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto">
+              {upcoming.length === 0 && <div className="text-xs text-slate-500 italic">Belum ada konten dijadwalkan.</div>}
+              {upcoming.map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; return (
+                <div key={it.id} onClick={()=>setModal({ date: it.date, item: it })} className="p-2.5 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50/40 cursor-pointer transition">
+                  <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded ${st.bg} ${st.text}`}>{it.status}</span></div>
+                  <div className="text-xs font-medium text-slate-800 line-clamp-2">{it.title}</div>
+                  <div className="text-[10px] text-slate-500 mt-1">{new Date(it.date).toLocaleDateString('id-ID', { weekday:'short', day:'2-digit', month:'short' })}</div>
+                </div>
+              )})}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {modal && <CalendarModal modal={modal} onClose={()=>setModal(null)} onSave={saveItem} onDelete={delItem} platforms={platforms} />}
+    </div>
+  )
+}
+
+function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
+  const it = modal.item
+  const [form, setForm] = useState({
+    id: it?.id, date: modal.date || it?.date,
+    platform: it?.platform || 'instagram',
+    type: it?.type || 'Reels', topic: it?.topic || 'Kursus Vokasi',
+    title: it?.title || '', status: it?.status || 'Scheduled',
+  })
+  const TYPES = { instagram:['Reels','Feed','Story','Carousel'], facebook:['Feed','Video','Story','Article'], youtube:['Video','Short'], tiktok:['Video'] }
+  const TOPICS = ['Kursus Vokasi','Sertifikasi','LKP Unggulan','Kisah Alumni','Program Prioritas','Beasiswa','Pelatihan Kerja','Digital Skill','Kewirausahaan','Green Skill','Kolaborasi Industri','Info Publik']
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-5 h-5" /></div>
+          <div><h3 className="font-semibold text-slate-900">{it ? 'Edit Konten' : 'Konten Baru'}</h3><p className="text-xs text-slate-500">Rencanakan konten untuk kalender editorial</p></div>
+        </div>
+        <div className="p-5 space-y-3">
+          <Field label="Judul Konten"><input value={form.title} onChange={e=>setForm(f=>({...f, title:e.target.value}))} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tanggal"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f, date:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></Field>
+            <Field label="Status">
+              <select value={form.status} onChange={e=>setForm(f=>({...f, status:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                <option>Draft</option><option>Scheduled</option><option>Published</option>
+              </select>
+            </Field>
+            <Field label="Platform">
+              <select value={form.platform} onChange={e=>setForm(f=>({...f, platform:e.target.value, type: (TYPES[e.target.value]||[])[0]}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                {platforms.map(p=><option key={p.key} value={p.key}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Tipe Konten">
+              <select value={form.type} onChange={e=>setForm(f=>({...f, type:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                {(TYPES[form.platform]||[]).map(t=><option key={t}>{t}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Topik">
+            <select value={form.topic} onChange={e=>setForm(f=>({...f, topic:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              {TOPICS.map(t=><option key={t}>{t}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-2">
+          {it && <button onClick={()=>onDelete(it.id)} className="mr-auto text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">🗑 Hapus</button>}
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50">Batal</button>
+          <button onClick={()=>form.title && onSave(form)} disabled={!form.title} className="text-sm px-4 py-2 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-50">Simpan</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+function Field({ label, children }) { return <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">{label}</div>{children}</label> }
+
+/* =========== COMPARE PERIODE =========== */
+export function ComparePeriodView({ days }) {
+  const platforms = getPlatforms()
+  const allSeries = getAllSeries(Math.max(days*2+10, 200))
+  const { totalsCurr, totalsPrev, perPlatformCurr, perPlatformPrev } = useMemo(() => aggregatePeriod(platforms, allSeries, days), [days, platforms, allSeries])
+
+  // Build daily combined data for both windows, aligned by relative day index
+  const combined = useMemo(() => {
+    const rows = []
+    for (let i = 0; i < days; i++) {
+      let curReach = 0, prevReach = 0, curEng = 0, prevEng = 0
+      platforms.forEach(p => {
+        const s = allSeries[p.key]
+        const c = s.slice(-days)[i]; const pr = s.slice(-days*2, -days)[i]
+        curReach += c?.reach || 0; curEng += c?.engagement || 0
+        prevReach += pr?.reach || 0; prevEng += pr?.engagement || 0
+      })
+      rows.push({ day: i+1, curReach, prevReach, curEng, prevEng })
+    }
+    return rows
+  }, [platforms, allSeries, days])
+
+  const kpis = [
+    { label:'Total Reach', curr: totalsCurr.reach, prev: totalsPrev.reach },
+    { label:'Total Engagement', curr: totalsCurr.engagement, prev: totalsPrev.engagement },
+    { label:'Engagement Rate', curr: totalsCurr.engagementRate, prev: totalsPrev.engagementRate, isPct: true },
+    { label:'Content Published', curr: totalsCurr.contentPublished, prev: totalsPrev.contentPublished },
+    { label:'Total Impressions', curr: totalsCurr.impressions, prev: totalsPrev.impressions },
+    { label:'Total Video Views', curr: totalsCurr.views, prev: totalsPrev.views },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-[#0B2545] to-blue-900 text-white p-5 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-blue-200/80 font-semibold">Compare Periode · Side-by-Side</div>
+          <h2 className="text-lg font-bold mt-1">Periode Ini vs Periode Sebelumnya</h2>
+          <p className="text-xs text-blue-100/70 mt-1">Membandingkan {days} hari terakhir dengan {days} hari sebelumnya</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right"><div className="text-[10px] text-blue-200/70 uppercase">Periode Sebelumnya</div><div className="text-sm font-mono">{new Date(Date.now()-days*2*86400000).toISOString().slice(0,10)} → {new Date(Date.now()-(days+1)*86400000).toISOString().slice(0,10)}</div></div>
+          <ChevronRight className="w-5 h-5 text-blue-300" />
+          <div><div className="text-[10px] text-blue-200/70 uppercase">Periode Ini</div><div className="text-sm font-mono">{new Date(Date.now()-days*86400000).toISOString().slice(0,10)} → {new Date().toISOString().slice(0,10)}</div></div>
+        </div>
+      </div>
+
+      {/* Side-by-side KPI comparison */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {kpis.map(k => {
+          const delta = pctChange(k.curr, k.prev)
+          const up = delta >= 0
+          return (
+            <div key={k.label} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100"><div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{k.label}</div></div>
+              <div className="grid grid-cols-2 divide-x divide-slate-100">
+                <div className="p-4 bg-slate-50/50">
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Sebelumnya</div>
+                  <div className="text-xl font-bold text-slate-500 mt-1">{k.isPct ? k.prev+'%' : formatNumber(k.prev)}</div>
+                </div>
+                <div className="p-4">
+                  <div className="text-[10px] text-blue-600 uppercase font-semibold">Sekarang</div>
+                  <div className="text-xl font-bold text-slate-900 mt-1">{k.isPct ? k.curr+'%' : formatNumber(k.curr)}</div>
+                </div>
+              </div>
+              <div className={`px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 ${up ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                {up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5 rotate-180" />}
+                {up ? '+' : ''}{delta}% {up ? 'peningkatan' : 'penurunan'}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Overlay charts */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <Card title="Tren Reach: Periode Ini vs Sebelumnya" desc="Dibandingkan berdasarkan hari relatif ke-N">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={combined}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize:11, fill:'#64748B' }} label={{ value:'Hari ke-', position:'insideBottom', fontSize:10, fill:'#94a3b8', offset:-2 }} />
+              <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize:12 }} />
+              <Line type="monotone" name="Periode Ini" dataKey="curReach" stroke="#1D4ED8" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" name="Periode Sebelumnya" dataKey="prevReach" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Tren Engagement: Periode Ini vs Sebelumnya" desc="Dibandingkan berdasarkan hari relatif ke-N">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={combined}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
+              <XAxis dataKey="day" tick={{ fontSize:11, fill:'#64748B' }} />
+              <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize:12 }} />
+              <Line type="monotone" name="Periode Ini" dataKey="curEng" stroke="#10B981" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" name="Periode Sebelumnya" dataKey="prevEng" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      {/* Per platform side-by-side table */}
+      <Card title="Perbandingan Platform" desc="Metrik utama tiap platform pada dua periode" className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+              <tr><th rowSpan={2} className="text-left px-4 py-2 font-semibold border-r border-slate-100">Platform</th>
+                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-slate-100">Reach</th>
+                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-slate-100">Engagement</th>
+                <th colSpan={3} className="text-center px-4 py-2 font-semibold">Eng. Rate</th></tr>
+              <tr className="text-[10px]"><th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500 border-r border-slate-100">Δ</th>
+                <th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500 border-r border-slate-100">Δ</th>
+                <th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500">Δ</th></tr>
+            </thead>
+            <tbody>
+              {platforms.map(p => { const c = perPlatformCurr[p.key], pr = perPlatformPrev[p.key]; return (
+                <tr key={p.key} className="border-t border-slate-100 hover:bg-slate-50/60">
+                  <td className="px-4 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background:p.color }} /><span className="font-medium text-slate-900">{p.name}</span></div></td>
+                  <CompareCell prev={pr.reach} curr={c.reach} />
+                  <CompareCell prev={pr.engagement} curr={c.engagement} />
+                  <CompareCell prev={pr.engagementRate} curr={c.engagementRate} pct isLast />
+                </tr>
+              )})}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function CompareCell({ prev, curr, pct = false, isLast = false }) {
+  const delta = pctChange(curr, prev); const up = delta >= 0
+  return (<>
+    <td className="px-3 py-3 text-slate-500">{pct ? prev+'%' : formatNumber(prev)}</td>
+    <td className="px-3 py-3 font-semibold text-slate-900">{pct ? curr+'%' : formatNumber(curr)}</td>
+    <td className={`px-3 py-3 font-medium ${!isLast?'border-r border-slate-100':''} ${up?'text-emerald-600':'text-red-500'}`}>{up?'▲ +':'▼ '}{delta}%</td>
+  </>)
+}
+

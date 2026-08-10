@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { connections } from '@/lib/db'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
+import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,7 @@ function baseUrl(request) {
 }
 function metaRedirect(request) { return baseUrl(request) + '/api/oauth/meta/callback' }
 function googleRedirect(request) { return baseUrl(request) + '/api/oauth/google/callback' }
+function tiktokRedirect(request) { return baseUrl(request) + '/api/oauth/tiktok/callback' }
 
 function popupResponse({ ok, provider, message }) {
   const html = `<!doctype html><html><body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;">
@@ -37,13 +39,20 @@ export async function GET(request, { params }) {
       const state = randomUUID()
       return NextResponse.redirect(googleAuthUrl(googleRedirect(request), state))
     }
+    if (path === 'oauth/tiktok/start') {
+      if (!hasTiktokCreds()) return new NextResponse('<html><body style="font-family:system-ui;padding:40px"><h2 style="color:#DC2626">TikTok credentials belum diset</h2><p>Admin belum mengisi TIKTOK_CLIENT_KEY dan TIKTOK_CLIENT_SECRET pada environment variables server.</p></body></html>', { status: 400, headers:{'Content-Type':'text/html'} })
+      const state = randomUUID()
+      return NextResponse.redirect(tiktokAuthUrl(tiktokRedirect(request), state))
+    }
     if (path === 'oauth/meta/callback') return metaCallback(request)
     if (path === 'oauth/google/callback') return googleCallback(request)
+    if (path === 'oauth/tiktok/callback') return tiktokCallback(request)
 
     if (path === 'connections') return listConnections()
     if (path === 'live/facebook/summary') return liveFacebook(request)
     if (path === 'live/instagram/summary') return liveInstagram(request)
     if (path === 'live/youtube/summary') return liveYoutube(request)
+    if (path === 'live/tiktok/summary') return liveTiktok(request)
     if (path === 'live/ga4/summary') return liveGa4(request)
 
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
@@ -146,6 +155,34 @@ async function googleCallback(request) {
   }
 }
 
+async function tiktokCallback(request) {
+  try {
+    const url = new URL(request.url)
+    const code = url.searchParams.get('code')
+    const error = url.searchParams.get('error_description') || url.searchParams.get('error')
+    if (error) return popupResponse({ ok:false, provider:'TikTok', message: error })
+    if (!code) return popupResponse({ ok:false, provider:'TikTok', message: 'No code' })
+    const t = await tiktokExchangeCode(code, tiktokRedirect(request))
+    let user = null
+    try { user = await tiktokUserInfo(t.access_token) } catch (e) { console.warn('tt user', e.message) }
+    const col = await connections()
+    await col.updateOne(
+      { provider: 'tiktok' },
+      { $set: {
+        provider: 'tiktok',
+        access_token: t.access_token, refresh_token: t.refresh_token,
+        open_id: t.open_id || user?.open_id,
+        expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
+        user, updated_at: new Date(), created_at: new Date(),
+      } },
+      { upsert: true }
+    )
+    return popupResponse({ ok:true, provider:'TikTok', message: user?.display_name ? `Terhubung sebagai ${user.display_name} (${user.follower_count||0} followers)` : 'Terhubung' })
+  } catch (e) {
+    return popupResponse({ ok:false, provider:'TikTok', message: String(e?.message || e) })
+  }
+}
+
 async function listConnections() {
   const col = await connections()
   const docs = await col.find({}).toArray()
@@ -158,6 +195,7 @@ async function listConnections() {
     ig_accounts: (d.ig_accounts || []).map(a => ({ id: a.id, username: a.username, name: a.name, followers_count: a.followers_count })),
     channels: (d.channels || []).map(c => ({ id: c.id, title: c.title, subscribers: c.subscribers, videos: c.videos, views: c.views })),
     ga_properties: (d.ga_properties || []).map(p => ({ id: p.id, displayName: p.displayName, parent: p.parent })),
+    user: d.user ? { display_name: d.user.display_name, follower_count: d.user.follower_count, following_count: d.user.following_count, likes_count: d.user.likes_count, video_count: d.user.video_count, avatar_url: d.user.avatar_url } : null,
   })) })
 }
 
@@ -215,6 +253,24 @@ async function liveYoutube(request) {
     let analytics = null
     try { analytics = await ytAnalyticsReport(token, ch.id, days) } catch (e) { /* Analytics scope may not be granted */ }
     return NextResponse.json({ connected: true, channel: { id: ch.id, title: ch.title }, days, stats, analytics, summary: summarizeYt(stats, analytics) })
+  } catch (e) {
+    return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
+  }
+}
+
+async function liveTiktok(request) {
+  const col = await connections()
+  const doc = await col.findOne({ provider: 'tiktok' })
+  if (!doc) return NextResponse.json({ connected: false })
+  try {
+    let user = doc.user
+    try { user = await tiktokUserInfo(doc.access_token) } catch {}
+    let videos = null
+    try { videos = await tiktokVideoList(doc.access_token) } catch {}
+    return NextResponse.json({ connected: true, user, videos, summary: {
+      followers: user?.follower_count || 0, following: user?.following_count || 0,
+      likes: user?.likes_count || 0, videos: user?.video_count || 0,
+    } })
   } catch (e) {
     return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
   }

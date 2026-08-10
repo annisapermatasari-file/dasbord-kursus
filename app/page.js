@@ -4,14 +4,14 @@ import {
   LayoutDashboard, BarChart3, Instagram, Facebook, Youtube, Music2, Globe,
   FileText, Users, Heart, MessageSquareText, Megaphone, Trophy, Lightbulb,
   FileBarChart, Settings, ChevronLeft, ChevronRight, RefreshCw, ShieldCheck,
-  LogOut, User, Building2, Crown, Eye,
+  LogOut, User, Building2, Crown, Eye, Calendar as CalendarIcon, GitCompareArrows,
 } from 'lucide-react'
 import { PeriodFilter, PERIODS, MockDataBanner } from '@/components/dash/shared'
 import {
   OverviewView, SocialMediaView, PlatformDetailView, WebsiteView,
   ContentView, AudienceView, EngagementView, SentimentView, CampaignView,
   BestContentView, RecommendationsView, ReportsView, SettingsView,
-  ExecutiveSummaryView,
+  ExecutiveSummaryView, ContentCalendarView, ComparePeriodView,
 } from '@/components/dash/views'
 
 const MENU = [
@@ -29,6 +29,8 @@ const MENU = [
   { key:'sentiment', label:'Sentiment Analysis', icon: MessageSquareText, title:'Sentiment Analysis', desc:'Persepsi publik dari komentar.' },
   { key:'campaign', label:'Campaign Performance', icon: Megaphone, title:'Campaign Analytics', desc:'Performa kampanye komunikasi.' },
   { key:'best', label:'Best Performing Content', icon: Trophy, title:'Best Performing Content', desc:'Ranking konten terbaik lintas platform.' },
+  { key:'calendar', label:'Content Calendar', icon: CalendarIcon, title:'Content Calendar', desc:'Kalender editorial — rencanakan dan tandai konten yang akan tayang.' },
+  { key:'compare', label:'Compare Periode', icon: GitCompareArrows, title:'Compare Periode', desc:'Bandingkan performa periode ini vs periode sebelumnya secara side-by-side.' },
   { key:'recommend', label:'Recommendations', icon: Lightbulb, title:'Recommendation Engine', desc:'Rekomendasi otomatis berbasis data.' },
   { key:'reports', label:'Reports', icon: FileBarChart, title:'Report Generator', desc:'Buat laporan Monthly/Quarterly/Annual/Executive.' },
   { key:'settings', label:'Settings', icon: Settings, title:'Settings & Admin Panel', desc:'Konfigurasi akun, API, users, dan organisasi.' },
@@ -145,10 +147,10 @@ export default function App() {
               <h2 className="text-lg font-semibold text-slate-900">{current.title}</h2>
               <p className="text-sm text-slate-500">{current.desc}</p>
             </div>
-            {!['settings'].includes(activeKey) && <PeriodFilter value={period} onChange={setPeriod} />}
+            {!['settings','calendar'].includes(activeKey) && <PeriodFilter value={period} onChange={setPeriod} />}
           </div>
 
-          {!['settings','executive'].includes(activeKey) && <div className="print:hidden"><MockDataBanner /></div>}
+          {!['settings','executive','calendar'].includes(activeKey) && <div className="print:hidden"><MockDataBanner /></div>}
 
           {activeKey==='overview' && <OverviewView days={days} />}
           {activeKey==='executive' && <ExecutiveSummaryView days={days} />}
@@ -161,6 +163,8 @@ export default function App() {
           {activeKey==='sentiment' && <SentimentView days={days} />}
           {activeKey==='campaign' && <CampaignView />}
           {activeKey==='best' && <BestContentView days={days} />}
+          {activeKey==='calendar' && <ContentCalendarView />}
+          {activeKey==='compare' && <ComparePeriodView days={days} />}
           {activeKey==='recommend' && <RecommendationsView days={days} />}
           {activeKey==='reports' && <ReportsView days={days} />}
           {activeKey==='settings' && <SettingsView />}
