@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadialBarChart, RadialBar,
@@ -178,6 +178,15 @@ export function PlatformDetailView({ platformKey, days }) {
   const contentItems = useMemo(() => generateContentItems(days).filter(c => c.platform === platformKey), [platformKey, days])
   const top = [...contentItems].sort((a,b)=>b.score - a.score).slice(0, 5)
   const worst = [...contentItems].sort((a,b)=>a.score - b.score).slice(0, 3)
+
+  // Try to fetch live data
+  const [live, setLive] = useState(null)
+  useEffect(() => {
+    setLive(null)
+    const endpoint = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary' }[platformKey]
+    if (!endpoint) return
+    fetch(`${endpoint}?days=${days}`).then(r=>r.json()).then(j => { if (j.connected && !j.error) setLive(j) }).catch(()=>{})
+  }, [platformKey, days])
   const kpiMap = {
     instagram: [
       { label:'Followers', value: cAgg.followers, prev: pAgg.followers, spark: curr.map(r=>r.followers) },
@@ -239,10 +248,19 @@ export function PlatformDetailView({ platformKey, days }) {
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: platform.color+'18', color: platform.color }}><Icon className="w-7 h-7" /></div>
-        <div>
+        <div className="flex-1">
           <div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Akun {platform.name}</div>
-          <div className="text-lg font-bold text-slate-900">{platform.handle}</div>
+          <div className="text-lg font-bold text-slate-900">{live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || platform.handle}</div>
+          {live && <div className="text-xs text-slate-500 mt-0.5">
+            {platformKey==='instagram' && live.summary && `${formatNumber(live.account?.followers_count||0)} followers · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.impressions||0)} impressions (live ${days}d)`}
+            {platformKey==='facebook' && live.summary && `${formatNumber(live.summary.fansEnd||0)} fans · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.engagement||0)} engagement (live ${days}d)`}
+            {platformKey==='youtube' && live.summary && `${formatNumber(live.summary.subscribers||0)} subscribers · ${formatNumber(live.summary.totalViews||0)} total views · ${formatNumber(live.summary.videos||0)} videos`}
+          </div>}
         </div>
+        {live
+          ? <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Live Data · Terhubung</span>
+          : <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 font-medium">🟡 Mock Data</span>
+        }
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -594,21 +612,150 @@ export function ReportsView({ days }) {
 /* =========== SETTINGS =========== */
 export function SettingsView() {
   const [tab, setTab] = useState('accounts')
+  const [conns, setConns] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [flash, setFlash] = useState(null)
+
+  const loadConns = async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/connections'); const j = await r.json(); setConns(j.connections || []) } catch {}
+    setLoading(false)
+  }
+  useEffect(() => {
+    loadConns()
+    const onMsg = (e) => {
+      if (e.data?.type === 'oauth') {
+        setFlash({ ok: e.data.ok, provider: e.data.provider, message: e.data.message })
+        loadConns()
+        setTimeout(()=>setFlash(null), 6000)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+
+  function openOauth(provider) {
+    const w = 620, h = 720
+    const l = window.screenX + (window.outerWidth - w)/2
+    const t = window.screenY + (window.outerHeight - h)/2
+    window.open(`/api/oauth/${provider}/start`, `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+  }
+  async function disconnect(provider) {
+    if (!confirm(`Putuskan koneksi ${provider}? Semua token akan dihapus.`)) return
+    await fetch(`/api/connections/${provider}`, { method:'DELETE' })
+    loadConns()
+  }
+
+  const meta = conns.find(c => c.provider === 'meta')
+  const google = conns.find(c => c.provider === 'google')
+
   const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
-  const accounts = [
-    { platform:'Instagram', handle:'@kursuskita', status:'Mock', color:'#E1306C', icon:Instagram },
-    { platform:'Facebook', handle:'KursusKita.info', status:'Mock', color:'#1877F2', icon:Facebook },
-    { platform:'YouTube', handle:'@kursuskita1211', status:'Mock', color:'#FF0000', icon:Youtube },
-    { platform:'TikTok', handle:'@kursuskita', status:'Mock', color:'#111827', icon:Music2 },
-    { platform:'Website', handle:'kursus.kemendikdasmen.go.id', status:'Mock', color:'#0EA5E9', icon:Globe },
-  ]
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
+
+  const accountsRows = [
+    { platform:'Instagram', handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : '@kursuskita', color:'#E1306C', icon:Instagram, connected: !!meta?.ig_accounts?.length, subtitle: meta?.ig_accounts?.[0] && `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers · via Meta` },
+    { platform:'Facebook', handle: meta?.pages?.[0]?.name || 'KursusKita.info', color:'#1877F2', icon:Facebook, connected: !!meta?.pages?.length, subtitle: meta?.pages?.[0] && `Page ID ${meta.pages[0].id.slice(-6)} · via Meta` },
+    { platform:'YouTube', handle: google?.channels?.[0]?.title || '@kursuskita1211', color:'#FF0000', icon:Youtube, connected: !!google?.channels?.length, subtitle: google?.channels?.[0] && `${formatNumber(+google.channels[0].subscribers||0)} subscribers · via Google` },
+    { platform:'TikTok', handle:'@kursuskita', color:'#111827', icon:Music2, connected: false, subtitle: 'Belum ada credentials TikTok Business API' },
+    { platform:'Website (GA4)', handle: google?.ga_properties?.[0]?.displayName || 'kursus.kemendikdasmen.go.id', color:'#0EA5E9', icon:Globe, connected: !!google?.ga_properties?.length, subtitle: google?.ga_properties?.[0] && `Property ${google.ga_properties[0].id} · via Google` },
+  ]
+
   return (
     <div className="space-y-6">
+      {flash && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${flash.ok?'bg-emerald-50 border-emerald-200 text-emerald-800':'bg-red-50 border-red-200 text-red-800'}`}>
+          {flash.ok ? '✅' : '⚠️'} <strong>{flash.provider}:</strong> {flash.message}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-[#0B2545] text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
-      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Kelola akun media sosial Direktorat"><div className="space-y-3">{accounts.map(a=>{ const Ic = a.icon; return (<div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200"><div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: a.color+'18', color: a.color }}><Ic className="w-5 h-5" /></div><div className="flex-1"><div className="font-medium text-slate-900">{a.platform}</div><div className="text-xs text-slate-500 font-mono">{a.handle}</div></div><span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">{a.status}</span><button className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">Hubungkan API</button></div>)})}</div></Card>)}
-      {tab==='api' && (<Card title="API Connections" desc="Konfigurasi kunci API untuk data aktual"><div className="space-y-3">{[['Instagram Graph API','Meta Business'],['Facebook Graph API','Meta Business'],['YouTube Data API v3','Google Cloud Console'],['TikTok Business API','TikTok for Developers'],['Google Analytics 4','Google Analytics']].map(([n,src])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">Sumber: {src}</div></div><input type="password" placeholder="API Key..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 w-64" /><button className="text-xs px-3 py-2 rounded-lg bg-blue-600 text-white">Simpan</button></div>))}</div></Card>)}
-      {tab==='website' && (<Card title="Website Analytics" desc="Konfigurasi Google Analytics 4"><div className="grid grid-cols-1 md:grid-cols-2 gap-3">{[['Property ID','GA-XXXXXXXXX'],['Measurement ID','G-XXXXXXXX'],['Service Account','service-account@project.iam'],['Website URL','https://kursus.kemendikdasmen.go.id']].map(([k,v])=>(<div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input placeholder={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>))}</div></Card>)}
+
+      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Direktorat"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
+        <div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: a.color+'18', color: a.color }}><Ic className="w-5 h-5" /></div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-slate-900">{a.platform}</div>
+            <div className="text-xs text-slate-500 font-mono">{a.handle}</div>
+            {a.subtitle && <div className="text-[11px] text-slate-500 mt-0.5">{a.subtitle}</div>}
+          </div>
+          {a.connected ? (
+            <span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Live · Connected</span>
+          ) : (
+            <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">Mock Data</span>
+          )}
+        </div>)})}</div></Card>)}
+
+      {tab==='api' && (
+        <div className="space-y-4">
+          <Card title="Meta OAuth (Instagram + Facebook)" desc="Hubungkan akun Facebook Business untuk otorisasi Facebook Page + Instagram Business Account">
+            <div className="flex items-center gap-3 flex-wrap">
+              {meta ? (
+                <>
+                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{meta.pages?.length || 0} Facebook Page · {meta.ig_accounts?.length || 0} Instagram Business · Diperbarui {meta.updated_at ? new Date(meta.updated_at).toLocaleString('id-ID') : '—'}</div></div>
+                  <button onClick={()=>openOauth('meta')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
+                  <button onClick={()=>disconnect('meta')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data Instagram & Facebook masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/meta/callback</code> sudah terdaftar di Meta App {process.env.NEXT_PUBLIC_META_APP_ID || ''}</div></div>
+                  <button onClick={()=>openOauth('meta')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1877F2] text-white text-sm font-medium hover:bg-[#166FE5]"><Facebook className="w-4 h-4" />Hubungkan Meta</button>
+                </>
+              )}
+            </div>
+            {meta?.pages?.length > 0 && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Facebook Pages Terhubung</div>
+                <div className="space-y-1.5">{meta.pages.map(pg => <div key={pg.id} className="flex items-center gap-2 text-xs"><Facebook className="w-3.5 h-3.5 text-[#1877F2]" /><span className="font-medium text-slate-700">{pg.name}</span><span className="text-slate-500 font-mono">{pg.id}</span></div>)}</div>
+              </div>
+            )}
+            {meta?.ig_accounts?.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Instagram Business Accounts</div>
+                <div className="space-y-1.5">{meta.ig_accounts.map(ig => <div key={ig.id} className="flex items-center gap-2 text-xs"><Instagram className="w-3.5 h-3.5 text-[#E1306C]" /><span className="font-medium text-slate-700">@{ig.username}</span><span className="text-slate-500">{formatNumber(ig.followers_count||0)} followers</span></div>)}</div>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Google OAuth (YouTube + Analytics 4)" desc="Hubungkan akun Google untuk mengakses channel YouTube dan properti GA4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {google ? (
+                <>
+                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{google.channels?.length || 0} YouTube Channel · {google.ga_properties?.length || 0} GA4 Property · Diperbarui {google.updated_at ? new Date(google.updated_at).toLocaleString('id-ID') : '—'}</div></div>
+                  <button onClick={()=>openOauth('google')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
+                  <button onClick={()=>disconnect('google')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data YouTube & Website (GA4) masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/google/callback</code> sudah terdaftar di Google Cloud Console</div></div>
+                  <button onClick={()=>openOauth('google')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-sm font-medium hover:bg-slate-50"><svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC04" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Hubungkan Google</button>
+                </>
+              )}
+            </div>
+            {google?.channels?.length > 0 && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">YouTube Channels</div>
+                <div className="space-y-1.5">{google.channels.map(ch => <div key={ch.id} className="flex items-center gap-2 text-xs"><Youtube className="w-3.5 h-3.5 text-red-600" /><span className="font-medium text-slate-700">{ch.title}</span><span className="text-slate-500">{formatNumber(+ch.subscribers||0)} subs · {formatNumber(+ch.videos||0)} videos</span></div>)}</div>
+              </div>
+            )}
+            {google?.ga_properties?.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">GA4 Properties</div>
+                <div className="space-y-1.5">{google.ga_properties.map(pr => <div key={pr.id} className="flex items-center gap-2 text-xs"><Globe className="w-3.5 h-3.5 text-sky-600" /><span className="font-medium text-slate-700">{pr.displayName}</span><span className="text-slate-500 font-mono">{pr.id}</span></div>)}</div>
+              </div>
+            )}
+          </Card>
+
+          <Card title="TikTok Business API" desc="Belum tersambung — perlu credentials tambahan">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:'#11182718', color:'#111827' }}><Music2 className="w-5 h-5" /></div>
+              <div className="flex-1"><div className="font-medium text-slate-900">TikTok Business API</div><div className="text-xs text-slate-500">Perlu App ID + Secret dari <a href="https://developers.tiktok.com/" className="text-blue-600 underline" target="_blank">TikTok for Developers</a> · Membutuhkan approval TikTok</div></div>
+              <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">Mock Data</span>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tab==='website' && (<Card title="Website Analytics — Google Analytics 4" desc="Hubungkan via Google OAuth pada tab API Connections. Jika sudah tersambung, properti akan tampil di sini."><div className="text-sm text-slate-700">{google?.ga_properties?.length ? (<div className="space-y-2">{google.ga_properties.map(pr => <div key={pr.id} className="p-3 rounded-lg border border-slate-200 flex items-center gap-3"><Globe className="w-5 h-5 text-sky-600" /><div className="flex-1"><div className="font-medium">{pr.displayName}</div><div className="text-xs text-slate-500">{pr.parent} · Property ID <span className="font-mono">{pr.id}</span></div></div><span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Aktif</span></div>)}</div>) : <div className="text-slate-500">Belum ada GA4 property terhubung. Buka tab <strong>API Connections</strong> → Hubungkan Google.</div>}</div></Card>)}
+
       {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">{d}</div></div></div>))}</div></Card>)}
       {tab==='users' && (<Card title="Users & Roles" desc="Manajemen pengguna dan peran"><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">{roles.map(r=><div key={r.name} className={`p-3 rounded-lg ring-1 ${r.color}`}><div className="font-semibold">{r.name}</div><div className="text-xs opacity-90 mt-1">{r.desc}</div></div>)}</div><table className="w-full text-sm"><thead className="text-xs text-slate-500"><tr><th className="text-left py-2">Nama</th><th className="text-left">Email</th><th className="text-left">Role</th><th className="text-left">Status</th></tr></thead><tbody>{[['Andi Prakoso','andi@kemdikdasmen.go.id','Admin','Aktif'],['Rina Setiawati','rina@kemdikdasmen.go.id','Analyst','Aktif'],['Budi Santosa','budi@kemdikdasmen.go.id','Executive','Aktif'],['Dewi Rahayu','dewi@kemdikdasmen.go.id','Viewer','Nonaktif']].map(r=>(<tr key={r[0]} className="border-t border-slate-100"><td className="py-2.5">{r[0]}</td><td className="text-slate-500 text-xs">{r[1]}</td><td>{r[2]}</td><td><span className={`text-xs px-2 py-0.5 rounded-md ${r[3]==='Aktif'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600'}`}>{r[3]}</span></td></tr>))}</tbody></table></Card>)}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
