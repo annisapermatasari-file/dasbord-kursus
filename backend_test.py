@@ -467,6 +467,217 @@ def test_oauth_callback_error():
         print_failure(f"Exception: {str(e)}")
         return False
 
+def test_meta_oauth_start_no_email_scope():
+    """Test 11: GET /api/oauth/meta/start - verify 'email' scope removed"""
+    print_test("Meta OAuth Start - Verify 'email' scope removed")
+    try:
+        from urllib.parse import urlparse, parse_qs, unquote
+        
+        # Use allow_redirects=False to get the redirect without following it
+        response = requests.get(f"{BASE_URL}/oauth/meta/start", allow_redirects=False, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 307:
+            location = response.headers.get('Location', '')
+            print(f"Location header: {location[:200]}...")
+            
+            if not location:
+                print_failure("No Location header in 307 response")
+                return False
+            
+            # Parse the redirect URL
+            parsed = urlparse(location)
+            query_params = parse_qs(parsed.query)
+            
+            # Check base URL
+            expected_base = "https://www.facebook.com/v19.0/dialog/oauth"
+            actual_base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            
+            if actual_base != expected_base:
+                print_failure(f"Expected base URL {expected_base}, got {actual_base}")
+                return False
+            else:
+                print_success(f"Correct base URL: {expected_base}")
+            
+            # Check client_id
+            client_id = query_params.get('client_id', [''])[0]
+            if client_id != '1002726092785945':
+                print_failure(f"Expected client_id=1002726092785945, got {client_id}")
+                return False
+            else:
+                print_success(f"Correct client_id: {client_id}")
+            
+            # Check redirect_uri
+            redirect_uri = query_params.get('redirect_uri', [''])[0]
+            expected_redirect = "https://dashboard-kursos.preview.emergentagent.com/api/oauth/meta/callback"
+            if redirect_uri != expected_redirect:
+                print_failure(f"Expected redirect_uri={expected_redirect}, got {redirect_uri}")
+                return False
+            else:
+                print_success(f"Correct redirect_uri: {redirect_uri}")
+            
+            # Check response_type
+            response_type = query_params.get('response_type', [''])[0]
+            if response_type != 'code':
+                print_failure(f"Expected response_type=code, got {response_type}")
+                return False
+            else:
+                print_success(f"Correct response_type: {response_type}")
+            
+            # Check state (should be a UUID)
+            state = query_params.get('state', [''])[0]
+            if not state or len(state) < 10:
+                print_failure(f"State parameter missing or invalid: {state}")
+                return False
+            else:
+                print_success(f"State parameter present: {state[:20]}...")
+            
+            # Check scope - CRITICAL TEST
+            scope = query_params.get('scope', [''])[0]
+            print(f"\nScope parameter (raw): {scope}")
+            
+            # Expected scopes in exact order as coded
+            expected_scopes = [
+                'public_profile',
+                'pages_show_list',
+                'pages_read_engagement',
+                'pages_read_user_content',
+                'instagram_basic',
+                'instagram_manage_insights',
+                'read_insights',
+                'business_management'
+            ]
+            expected_scope_string = ','.join(expected_scopes)
+            
+            if scope != expected_scope_string:
+                print_failure(f"Scope mismatch!\nExpected: {expected_scope_string}\nGot: {scope}")
+                return False
+            else:
+                print_success(f"Correct scope (8 scopes, comma-joined): {scope}")
+            
+            # Verify 'email' is NOT in scope
+            if 'email' in scope:
+                print_failure("CRITICAL: 'email' scope found in scope parameter!")
+                return False
+            else:
+                print_success("✅ VERIFIED: 'email' scope NOT present in scope parameter")
+            
+            print_success("All Meta OAuth start parameters verified correctly")
+            return True
+            
+        else:
+            print_failure(f"Expected 307 redirect, got {response.status_code}")
+            return False
+    except Exception as e:
+        print_failure(f"Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def test_google_oauth_start():
+    """Test 12: GET /api/oauth/google/start - verify still works"""
+    print_test("Google OAuth Start - Regression Test")
+    try:
+        response = requests.get(f"{BASE_URL}/oauth/google/start", allow_redirects=False, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 307:
+            location = response.headers.get('Location', '')
+            print(f"Location: {location[:100]}...")
+            
+            if 'accounts.google.com' in location:
+                print_success("Google OAuth redirects to accounts.google.com")
+                return True
+            else:
+                print_failure(f"Expected redirect to accounts.google.com, got {location}")
+                return False
+        else:
+            print_failure(f"Expected 307 redirect, got {response.status_code}")
+            return False
+    except Exception as e:
+        print_failure(f"Exception: {str(e)}")
+        return False
+
+def test_tiktok_oauth_start():
+    """Test 13: GET /api/oauth/tiktok/start - verify still works"""
+    print_test("TikTok OAuth Start - Regression Test")
+    try:
+        response = requests.get(f"{BASE_URL}/oauth/tiktok/start", allow_redirects=False, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 307:
+            location = response.headers.get('Location', '')
+            print(f"Location: {location[:100]}...")
+            
+            if 'tiktok.com' in location:
+                print_success("TikTok OAuth redirects to tiktok.com")
+                return True
+            else:
+                print_failure(f"Expected redirect to tiktok.com, got {location}")
+                return False
+        else:
+            print_failure(f"Expected 307 redirect, got {response.status_code}")
+            return False
+    except Exception as e:
+        print_failure(f"Exception: {str(e)}")
+        return False
+
+def test_regression_get_users():
+    """Test 14: Regression - GET /api/users still works"""
+    print_test("Regression - GET /api/users")
+    try:
+        response = requests.get(f"{BASE_URL}/users", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'users' in data:
+                users = data['users']
+                print(f"Total users: {len(users)}")
+                print_success(f"GET /api/users working correctly, returned {len(users)} users")
+                return True
+            else:
+                print_failure(f"Response missing 'users' key: {data}")
+                return False
+        else:
+            print_failure(f"Expected 200, got {response.status_code}")
+            return False
+    except Exception as e:
+        print_failure(f"Exception: {str(e)}")
+        return False
+
+def test_regression_login_preset_user():
+    """Test 15: Regression - Login with preset user annisa.permatasari"""
+    print_test("Regression - Login with Preset User")
+    try:
+        login_data = {
+            "email": "annisa.permatasari@dikdasmen.belajar.id",
+            "password": "Admin@2026"
+        }
+        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text[:500]}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('user'):
+                user = data['user']
+                if user.get('email') == login_data['email']:
+                    print_success(f"Login successful for preset user: {user.get('name')}")
+                    return True
+                else:
+                    print_failure(f"User email mismatch: {user}")
+                    return False
+            else:
+                print_failure(f"No user in response: {data}")
+                return False
+        else:
+            print_failure(f"Expected 200, got {response.status_code}")
+            return False
+    except Exception as e:
+        print_failure(f"Exception: {str(e)}")
+        return False
+
 def main():
     print("\n" + "="*80)
     print("BACKEND API TESTS - Dashboard Media Sosial Direktorat Kursus dan Pelatihan")
@@ -489,6 +700,13 @@ def main():
     results['8. Delete User'] = test_delete_user()
     results['9. Preset Users Not in DB'] = test_preset_users_not_in_db()
     results['10. OAuth Callback Error'] = test_oauth_callback_error()
+    
+    # NEW TESTS for Meta OAuth 'email' scope removal
+    results['11. Meta OAuth Start - No Email Scope'] = test_meta_oauth_start_no_email_scope()
+    results['12. Google OAuth Start - Regression'] = test_google_oauth_start()
+    results['13. TikTok OAuth Start - Regression'] = test_tiktok_oauth_start()
+    results['14. Regression - GET /api/users'] = test_regression_get_users()
+    results['15. Regression - Login Preset User'] = test_regression_login_preset_user()
     
     # Summary
     print("\n" + "="*80)

@@ -188,8 +188,54 @@ frontend:
     needs_retesting: false
     status_history:
       - working: "NA"
+
+  - task: "Meta OAuth remove 'email' scope"
+    implemented: true
+    working: true
+    file: "/app/lib/oauth-meta.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User reported Facebook error "Invalid Scopes: email" during Meta OAuth authorization.
+          Removed 'email' from SCOPES in /app/lib/oauth-meta.js.
+          Backend restarted.
+          Verify GET /api/oauth/meta/start returns 307 with Location URL containing scope parameter that:
+          - Does NOT contain "email"
+          - Contains EXACTLY these 8 scopes (comma-joined, URL-encoded): public_profile, pages_show_list, pages_read_engagement, pages_read_user_content, instagram_basic, instagram_manage_insights, read_insights, business_management
+          - Points to https://www.facebook.com/v19.0/dialog/oauth
+          - client_id=1002726092785945
+          - redirect_uri=https://dashboard-kursos.preview.emergentagent.com/api/oauth/meta/callback
+      - working: "NA"
         agent: "main"
         comment: "Frontend not requested for testing."
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ BUG FIX VERIFIED - Meta OAuth 'email' scope successfully removed
+          
+          Test 11: Meta OAuth Start - No Email Scope
+          ✅ GET /api/oauth/meta/start returns HTTP 307 (temporary redirect)
+          ✅ Location header points to https://www.facebook.com/v19.0/dialog/oauth
+          ✅ Query parameters verified:
+             • client_id=1002726092785945 ✓
+             • redirect_uri=https://dashboard-kursos.preview.emergentagent.com/api/oauth/meta/callback ✓
+             • response_type=code ✓
+             • state=<uuid> ✓
+             • scope=public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,instagram_basic,instagram_manage_insights,read_insights,business_management ✓
+          ✅ CRITICAL: 'email' scope NOT present in scope parameter (bug fixed)
+          ✅ Exactly 8 scopes present in correct order (comma-joined, no URL encoding issues)
+          
+          Regression Tests:
+          ✅ Test 12: Google OAuth Start → 307 to accounts.google.com (working)
+          ✅ Test 13: TikTok OAuth Start → 307 to tiktok.com (working)
+          ✅ Test 14: GET /api/users → returns { users: [...] } with 4 users (working)
+          ✅ Test 15: POST /api/auth/login with annisa.permatasari@dikdasmen.belajar.id / Admin@2026 → 200 { user } (working)
+          
+          Bug fix complete. User should no longer see "Invalid Scopes: email" error when clicking "Hubungkan Meta" button.
 
   - task: "Login screen fallback to /api/auth/login for DB users"
     implemented: true
@@ -211,8 +257,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "User management API (GET/POST /api/users, DELETE /api/users/:email, POST /api/auth/login)"
-    - "OAuth callback improved error message with actionable redirect_uri hint"
+    - "Meta OAuth remove 'email' scope"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -258,3 +303,27 @@ agent_communication:
       6. OAuth error page displays actionable redirect URI hint in Indonesian
       
       No critical issues found. Backend implementation is production-ready.
+  - agent: "main"
+    message: |
+      User reported Facebook error "Invalid Scopes: email" when clicking "Hubungkan Meta" button.
+      Removed 'email' scope from /app/lib/oauth-meta.js SCOPES array.
+      Backend restarted.
+      Please test GET /api/oauth/meta/start to verify 'email' scope is removed and other OAuth endpoints still work.
+  - agent: "testing"
+    message: |
+      ✅ BUG FIX VERIFIED - Meta OAuth 'email' scope removal successful (17/18 tests passed)
+      
+      CRITICAL TEST PASSED:
+      • Test 11: Meta OAuth Start - 'email' scope successfully removed from authorization URL
+      • Scope parameter now contains exactly 8 scopes (no 'email'): public_profile, pages_show_list, pages_read_engagement, pages_read_user_content, instagram_basic, instagram_manage_insights, read_insights, business_management
+      • All OAuth parameters verified: client_id, redirect_uri, response_type, state
+      
+      REGRESSION TESTS PASSED:
+      • Google OAuth Start → working (redirects to accounts.google.com)
+      • TikTok OAuth Start → working (redirects to tiktok.com)
+      • GET /api/users → working (returns 4 users)
+      • POST /api/auth/login with preset user → working (returns user object)
+      
+      User should no longer see "Invalid Scopes: email" error when connecting Meta account.
+      
+      Note: Test 9 "Preset Users Not in DB" failed (preset users are in DB), but this is unrelated to the current bug fix and was already failing in previous test runs.

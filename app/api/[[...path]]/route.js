@@ -59,6 +59,7 @@ export async function GET(request, { params }) {
 
     if (path === 'connections') return listConnections()
     if (path === 'users') return listUsers()
+    if (path === 'impact-stats') return getImpactStats()
     if (path === 'live/facebook/summary') return liveFacebook(request)
     if (path === 'live/instagram/summary') return liveInstagram(request)
     if (path === 'live/youtube/summary') return liveYoutube(request)
