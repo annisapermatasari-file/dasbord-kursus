@@ -247,22 +247,32 @@ function LoginScreen({ onLogin, onForgot }) {
           </div>
 
           <div className="mt-14 max-w-lg">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-semibold uppercase tracking-wider mb-5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+              Direktorat Kursus dan Pelatihan
+            </div>
             <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.1]">
-              Dashboard Analitik<br />Media Sosial Terpadu
+              Terampil, Bersertifikasi,<br />
+              <span className="text-blue-700">Berdaya Saing Global.</span>
             </h1>
             <p className="text-slate-600 mt-5 leading-relaxed">
-              Pantau performa <strong>Instagram @kursuskita</strong>, <strong>Facebook KursusKita.info</strong>,
-              <strong> YouTube @kursuskita1211</strong>, dan <strong>TikTok @kursuskita</strong> — serta dampaknya terhadap kunjungan
-              ke <a href="https://kursus.kemendikdasmen.go.id" className="text-blue-600 underline underline-offset-2">kursus.kemendikdasmen.go.id</a> — dari satu antarmuka resmi.
+              Kami mengembangkan kompetensi masyarakat Indonesia melalui program <strong>kursus</strong>, <strong>pelatihan</strong>, dan <strong>sertifikasi</strong> berbasis kebutuhan industri —
+              melalui Lembaga Kursus dan Pelatihan (LKP) di seluruh nusantara.
             </p>
-            <ul className="mt-6 space-y-2.5 text-slate-700">
-              {[
-                'Data langsung dari API resmi platform, tanpa data contoh.',
-                'Laporan mingguan, bulanan, tahunan & rentang kustom.',
-                'Perbandingan periode & identifikasi konten berpengaruh.',
-                'AI Communication Insights berbasis LLM (Bahasa Indonesia).',
-              ].map((t,i)=><li key={i} className="flex gap-3"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2.5 shrink-0" /><span>{t}</span></li>)}
-            </ul>
+            <div className="mt-6 rounded-2xl bg-slate-50 border border-slate-200 p-4">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Tentang Portal Ini</div>
+              <p className="text-sm text-slate-700 mt-1.5 leading-relaxed">
+                Portal internal untuk <strong>memantau, menganalisis, dan mengevaluasi</strong> seluruh komunikasi digital Direktorat — memastikan setiap program menjangkau publik luas dan berdampak nyata.
+              </p>
+              <ul className="mt-3 space-y-2 text-slate-700 text-sm">
+                {[
+                  'Ringkasan performa Instagram, Facebook, YouTube, TikTok, & Website.',
+                  'Identifikasi konten paling efektif dan tren audiens.',
+                  'AI Communication Insights berbasis LLM untuk keputusan pimpinan.',
+                  'Laporan komunikasi siap saji untuk evaluasi berkala.',
+                ].map((t,i)=><li key={i} className="flex gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 shrink-0" /><span>{t}</span></li>)}
+              </ul>
+            </div>
           </div>
         </div>
 
