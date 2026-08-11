@@ -238,7 +238,7 @@ function LoginScreen({ onLogin, onForgot }) {
       {/* LEFT — Hero photo + branding overlay */}
       <div className="relative min-h-[420px] lg:min-h-screen overflow-hidden text-white">
         {/* Background image */}
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1704859599421-565b8ef20a9f?w=1600&q=80')" }} />
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1690356107685-3725367f6f3f?w=1600&q=80&auto=format&fit=crop')" }} />
         {/* Dark gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#0B2545]/95 via-[#0B2545]/85 to-[#1D4ED8]/75" />
         {/* Content */}
@@ -395,7 +395,7 @@ function ForgotPasswordScreen({ onBack }) {
     <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
       {/* LEFT — Hero photo + branding overlay */}
       <div className="relative min-h-[420px] lg:min-h-screen overflow-hidden text-white">
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1704859599421-565b8ef20a9f?w=1600&q=80')" }} />
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1690356107685-3725367f6f3f?w=1600&q=80&auto=format&fit=crop')" }} />
         <div className="absolute inset-0 bg-gradient-to-br from-[#0B2545]/95 via-[#0B2545]/85 to-[#1D4ED8]/75" />
         <div className="relative z-10 p-8 lg:p-14 h-full flex flex-col justify-between">
           <div>
