@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   LayoutDashboard, BarChart3, Instagram, Facebook, Youtube, Music2, Globe,
   FileText, Users, Heart, MessageSquareText, Megaphone, Trophy, Lightbulb,
@@ -281,9 +281,9 @@ function LoginScreen({ onLogin, onForgot }) {
           <div className="mt-10">
             <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {impactStats.map(s => (
+              {impactStats.map((s, i) => (
                 <div key={s.l} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
-                  <div className="text-2xl font-black tracking-tight text-white">{s.v}</div>
+                  <div className="text-2xl font-black tracking-tight text-white"><CountUp value={s.v} delay={i*150} /></div>
                   <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l}</div>
                   <div className="text-[10px] text-blue-100/70 mt-0.5">{s.s}</div>
                 </div>
@@ -499,5 +499,56 @@ function ForgotPasswordScreen({ onBack }) {
       </div>
     </div>
   )
+}
+
+
+/* ---------- CountUp animation for stat cards ---------- */
+function parseIndonesianStat(str) {
+  const s = String(str || '').trim()
+  const m = s.match(/^([\d.,]+)(.*)$/)
+  if (!m) return { num: 0, suffix: s, decimals: 0, useThousands: false }
+  const raw = m[1]
+  const suffix = m[2] || ''
+  const commaDecimal = raw.match(/,(\d{1,2})$/)
+  const isDecimalComma = !!commaDecimal
+  const dotsCount = (raw.match(/\./g) || []).length
+  const useThousands = dotsCount > 0 && !isDecimalComma
+  let normalized = raw
+  if (isDecimalComma) normalized = raw.replace(/\./g, '').replace(',', '.')
+  else if (useThousands) normalized = raw.replace(/\./g, '')
+  return { num: parseFloat(normalized) || 0, suffix, decimals: isDecimalComma ? commaDecimal[1].length : 0, useThousands }
+}
+function formatIndonesianStat(num, { suffix, decimals, useThousands }) {
+  let str
+  if (decimals > 0) {
+    str = num.toFixed(decimals).replace('.', ',')
+    if (useThousands) { const parts = str.split(','); parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); str = parts.join(',') }
+  } else {
+    str = Math.round(num).toString()
+    if (useThousands) str = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  }
+  return str + suffix
+}
+function CountUp({ value, delay = 0, duration = 1600 }) {
+  const parsed = useMemo(() => parseIndonesianStat(value), [value])
+  const [display, setDisplay] = useState(formatIndonesianStat(0, parsed))
+  useEffect(() => {
+    let raf, timer
+    setDisplay(formatIndonesianStat(0, parsed))
+    timer = setTimeout(() => {
+      const start = performance.now()
+      const easeOut = t => 1 - Math.pow(1 - t, 3)
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / duration)
+        const eased = easeOut(t)
+        setDisplay(formatIndonesianStat(parsed.num * eased, parsed))
+        if (t < 1) raf = requestAnimationFrame(tick)
+        else setDisplay(value)
+      }
+      raf = requestAnimationFrame(tick)
+    }, delay)
+    return () => { clearTimeout(timer); if (raf) cancelAnimationFrame(raf) }
+  }, [value, parsed, delay, duration])
+  return <span>{display}</span>
 }
 
