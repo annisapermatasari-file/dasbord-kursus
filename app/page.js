@@ -234,49 +234,59 @@ function LoginScreen({ onLogin, onForgot }) {
   function fillAs(u) { setEmail(u.email); setPassword(u.password); setError('') }
 
   return (
-    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-2">
-      {/* LEFT — Branding */}
-      <div className="p-8 lg:p-16 flex flex-col justify-between bg-white">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center ring-1 ring-slate-200"><ShieldCheck className="w-7 h-7 text-white" /></div>
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Kemendikdasmen</div>
-              <div className="text-sm font-bold text-slate-900 leading-tight">Direktorat Kursus &amp; Pelatihan</div>
+    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
+      {/* LEFT — Hero photo + branding overlay */}
+      <div className="relative min-h-[420px] lg:min-h-screen overflow-hidden text-white">
+        {/* Background image */}
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1704859599421-565b8ef20a9f?w=1600&q=80')" }} />
+        {/* Dark gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0B2545]/95 via-[#0B2545]/85 to-[#1D4ED8]/75" />
+        {/* Content */}
+        <div className="relative z-10 p-8 lg:p-14 h-full flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center ring-1 ring-white/20"><ShieldCheck className="w-7 h-7 text-white" /></div>
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-blue-200 font-semibold">Kemendikdasmen</div>
+                <div className="text-sm font-bold text-white leading-tight">Direktorat Kursus &amp; Pelatihan</div>
+              </div>
+            </div>
+
+            <div className="mt-14 max-w-xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur text-blue-100 text-[11px] font-semibold uppercase tracking-wider mb-5 ring-1 ring-white/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Direktorat Kursus dan Pelatihan
+              </div>
+              <h1 className="text-4xl md:text-[52px] font-black tracking-tight leading-[1.05]">
+                Terampil,<br />Bersertifikasi,<br />
+                <span className="text-blue-200">Berdaya Saing Global.</span>
+              </h1>
+              <p className="text-blue-100/90 mt-5 leading-relaxed max-w-md">
+                Kami mengembangkan kompetensi masyarakat Indonesia melalui program <strong className="text-white">kursus</strong>, <strong className="text-white">pelatihan</strong>, dan <strong className="text-white">sertifikasi</strong> berbasis kebutuhan industri — melalui LKP di seluruh nusantara.
+              </p>
             </div>
           </div>
 
-          <div className="mt-14 max-w-lg">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-semibold uppercase tracking-wider mb-5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-              Direktorat Kursus dan Pelatihan
+          {/* Impact stats */}
+          <div className="mt-10">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { v:'1,2 Jt+', l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi' },
+                { v:'19.500+', l:'LKP Aktif', s:'Tersebar 34 provinsi' },
+                { v:'86%',    l:'Penempatan Kerja', s:'Alumni bekerja/berwirausaha' },
+                { v:'450+',   l:'Bidang Keahlian', s:'Selaras SKKNI & industri' },
+              ].map(s => (
+                <div key={s.l} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
+                  <div className="text-2xl font-black tracking-tight text-white">{s.v}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l}</div>
+                  <div className="text-[10px] text-blue-100/70 mt-0.5">{s.s}</div>
+                </div>
+              ))}
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.1]">
-              Terampil, Bersertifikasi,<br />
-              <span className="text-blue-700">Berdaya Saing Global.</span>
-            </h1>
-            <p className="text-slate-600 mt-5 leading-relaxed">
-              Kami mengembangkan kompetensi masyarakat Indonesia melalui program <strong>kursus</strong>, <strong>pelatihan</strong>, dan <strong>sertifikasi</strong> berbasis kebutuhan industri —
-              melalui Lembaga Kursus dan Pelatihan (LKP) di seluruh nusantara.
-            </p>
-            <div className="mt-6 rounded-2xl bg-slate-50 border border-slate-200 p-4">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Tentang Portal Ini</div>
-              <p className="text-sm text-slate-700 mt-1.5 leading-relaxed">
-                Portal internal untuk <strong>memantau, menganalisis, dan mengevaluasi</strong> seluruh komunikasi digital Direktorat — memastikan setiap program menjangkau publik luas dan berdampak nyata.
-              </p>
-              <ul className="mt-3 space-y-2 text-slate-700 text-sm">
-                {[
-                  'Ringkasan performa Instagram, Facebook, YouTube, TikTok, & Website.',
-                  'Identifikasi konten paling efektif dan tren audiens.',
-                  'AI Communication Insights berbasis LLM untuk keputusan pimpinan.',
-                  'Laporan komunikasi siap saji untuk evaluasi berkala.',
-                ].map((t,i)=><li key={i} className="flex gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 shrink-0" /><span>{t}</span></li>)}
-              </ul>
-            </div>
+            <div className="text-[10px] text-blue-200/60 mt-4">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah · Portal internal — pemantauan komunikasi digital</div>
           </div>
         </div>
-
-        <div className="text-xs text-slate-400 pt-8">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah</div>
       </div>
 
       {/* RIGHT — Login form */}
@@ -382,32 +392,36 @@ function ForgotPasswordScreen({ onBack }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-2">
-      {/* LEFT branding */}
-      <div className="p-8 lg:p-16 flex flex-col justify-between bg-white">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center ring-1 ring-slate-200"><ShieldCheck className="w-7 h-7 text-white" /></div>
-            <div><div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Kemendikdasmen</div><div className="text-sm font-bold text-slate-900 leading-tight">Direktorat Kursus &amp; Pelatihan</div></div>
-          </div>
-          <div className="mt-14 max-w-lg">
-            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.1]">Lupa Kata Sandi?<br />Tidak masalah.</h1>
-            <p className="text-slate-600 mt-5 leading-relaxed">Kami akan mengirim kode verifikasi <strong>6 digit</strong> ke email Anda. Gunakan kode tersebut untuk mengatur kata sandi baru.</p>
-            <div className="mt-6 space-y-3">
-              {[
-                { n:1, t:'Masukkan email institusi Anda', d:'Sistem akan memverifikasi keberadaan akun.' },
-                { n:2, t:'Cek email untuk kode 6 digit', d:'Kode berlaku selama 15 menit sejak dibuat.' },
-                { n:3, t:'Buat kata sandi baru', d:'Minimal 6 karakter. Kombinasikan huruf, angka, & simbol.' },
-              ].map(s => (
-                <div key={s.n} className="flex gap-3">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step>=s.n?'bg-blue-600 text-white':'bg-slate-200 text-slate-500'}`}>{s.n}</div>
-                  <div><div className="text-sm font-semibold text-slate-800">{s.t}</div><div className="text-xs text-slate-500 mt-0.5">{s.d}</div></div>
-                </div>
-              ))}
+    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
+      {/* LEFT — Hero photo + branding overlay */}
+      <div className="relative min-h-[420px] lg:min-h-screen overflow-hidden text-white">
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1704859599421-565b8ef20a9f?w=1600&q=80')" }} />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0B2545]/95 via-[#0B2545]/85 to-[#1D4ED8]/75" />
+        <div className="relative z-10 p-8 lg:p-14 h-full flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center ring-1 ring-white/20"><ShieldCheck className="w-7 h-7 text-white" /></div>
+              <div><div className="text-[10px] uppercase tracking-[0.25em] text-blue-200 font-semibold">Kemendikdasmen</div><div className="text-sm font-bold text-white leading-tight">Direktorat Kursus &amp; Pelatihan</div></div>
+            </div>
+            <div className="mt-14 max-w-lg">
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-[1.05]">Lupa Kata Sandi?<br /><span className="text-blue-200">Tidak masalah.</span></h1>
+              <p className="text-blue-100/90 mt-5 leading-relaxed">Kami akan mengirim kode verifikasi <strong className="text-white">6 digit</strong> ke email Anda. Gunakan kode tersebut untuk mengatur kata sandi baru.</p>
+              <div className="mt-6 space-y-3">
+                {[
+                  { n:1, t:'Masukkan email institusi Anda', d:'Sistem akan memverifikasi keberadaan akun.' },
+                  { n:2, t:'Cek email untuk kode 6 digit', d:'Kode berlaku selama 15 menit sejak dibuat.' },
+                  { n:3, t:'Buat kata sandi baru', d:'Minimal 6 karakter. Kombinasikan huruf, angka, & simbol.' },
+                ].map(s => (
+                  <div key={s.n} className="flex gap-3">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step>=s.n?'bg-blue-400 text-white ring-2 ring-blue-300/50':'bg-white/10 text-blue-200 ring-1 ring-white/20'}`}>{s.n}</div>
+                    <div><div className="text-sm font-semibold text-white">{s.t}</div><div className="text-xs text-blue-100/70 mt-0.5">{s.d}</div></div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+          <div className="text-[10px] text-blue-200/60">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah</div>
         </div>
-        <div className="text-xs text-slate-400 pt-8">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah</div>
       </div>
 
       {/* RIGHT form */}
