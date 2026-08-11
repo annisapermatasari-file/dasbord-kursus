@@ -78,7 +78,10 @@ export async function POST(request, { params }) {
   try {
     if (path === 'ai-insights') return aiInsights(request)
     if (path === 'users') return createUser(request)
+    if (path === 'users/status') return toggleUserStatus(request)
     if (path === 'auth/login') return authLogin(request)
+    if (path === 'auth/forgot-password') return forgotPassword(request)
+    if (path === 'auth/reset-password') return resetPassword(request)
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('POST error', path, e)
@@ -99,6 +102,8 @@ export async function DELETE(request, { params }) {
     if (path.startsWith('users/')) {
       const email = decodeURIComponent(path.slice('users/'.length))
       const col = await users()
+      const err = await ensureNotLastActiveAdmin(col, email.toLowerCase())
+      if (err) return NextResponse.json({ error: err }, { status: 400 })
       await col.deleteOne({ email: email.toLowerCase() })
       return NextResponse.json({ ok: true })
     }
@@ -370,10 +375,37 @@ const ROLE_ALLOWED = ['Admin','Analyst','Executive','Viewer']
 
 function initialsOf(name) { return (name||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '??' }
 
-async function listUsers() {
+const SEED_USERS = [
+  { name:'Annisa Permatasari', email:'annisa.permatasari@dikdasmen.belajar.id', password:'Admin@2026',     role:'Admin',     jabatan:'Kepala Sub-Bagian Humas' },
+  { name:'Rina Setiawati',     email:'rina.setiawati@dikdasmen.belajar.id',     password:'Analyst@2026',   role:'Analyst',   jabatan:'Analis Komunikasi Digital' },
+  { name:'Budi Santosa',       email:'budi.santosa@dikdasmen.belajar.id',       password:'Executive@2026', role:'Executive', jabatan:'Direktur Kursus dan Pelatihan' },
+  { name:'Dewi Rahayu',        email:'dewi.rahayu@dikdasmen.belajar.id',        password:'Viewer@2026',    role:'Viewer',    jabatan:'Staf Publikasi' },
+]
+let _seeded = false
+async function ensureSeeded() {
+  if (_seeded) return
   const col = await users()
-  const docs = await col.find({}, { projection: { password: 0 } }).sort({ created_at: -1 }).toArray()
-  return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, created_at: d.created_at })) })
+  const count = await col.countDocuments()
+  if (count === 0) {
+    const now = new Date()
+    await col.insertMany(SEED_USERS.map(u => ({ ...u, initial: initialsOf(u.name), active: true, created_at: now, updated_at: now, seeded: true })))
+  }
+  _seeded = true
+}
+
+async function ensureNotLastActiveAdmin(col, email) {
+  const target = await col.findOne({ email })
+  if (!target || target.role !== 'Admin') return null
+  const otherActiveAdmins = await col.countDocuments({ role:'Admin', active: { $ne: false }, email: { $ne: email } })
+  if (otherActiveAdmins === 0) return 'Tidak dapat menghapus/menonaktifkan Admin terakhir. Tambah Admin lain terlebih dulu.'
+  return null
+}
+
+async function listUsers() {
+  await ensureSeeded()
+  const col = await users()
+  const docs = await col.find({}, { projection: { password: 0, reset_code: 0, reset_expires: 0 } }).sort({ created_at: 1 }).toArray()
+  return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
 }
 
 async function createUser(request) {
@@ -399,14 +431,74 @@ async function createUser(request) {
 }
 
 async function authLogin(request) {
+  await ensureSeeded()
   const body = await request.json().catch(() => ({}))
   const email = String(body.email || '').trim().toLowerCase()
   const password = String(body.password || '')
   if (!email || !password) return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
   const col = await users()
   const doc = await col.findOne({ email })
-  if (!doc || doc.password !== password || doc.active === false) return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+  if (!doc || doc.password !== password) return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+  if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
   return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
+}
+
+async function toggleUserStatus(request) {
+  const body = await request.json().catch(() => ({}))
+  const email = String(body.email || '').trim().toLowerCase()
+  const active = !!body.active
+  if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
+  const col = await users()
+  if (!active) {
+    const err = await ensureNotLastActiveAdmin(col, email)
+    if (err) return NextResponse.json({ error: err }, { status: 400 })
+  }
+  const r = await col.updateOne({ email }, { $set: { active, updated_at: new Date() } })
+  if (!r.matchedCount) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+  return NextResponse.json({ ok: true, email, active })
+}
+
+function generateResetCode() {
+  return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+async function forgotPassword(request) {
+  const body = await request.json().catch(() => ({}))
+  const email = String(body.email || '').trim().toLowerCase()
+  if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
+  const col = await users()
+  const doc = await col.findOne({ email })
+  if (!doc) {
+    // Do not reveal user existence — return success but with a hint dev_code=null
+    return NextResponse.json({ ok: true, message: 'Jika email terdaftar, kode verifikasi telah dikirim.', dev_code: null, delivery: 'demo' })
+  }
+  if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+  const code = generateResetCode()
+  const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
+  await col.updateOne({ email }, { $set: { reset_code: code, reset_expires: expires, updated_at: new Date() } })
+  // NOTE: In production, send email here (SendGrid/SES/SMTP). For demo, return dev_code.
+  return NextResponse.json({
+    ok: true,
+    message: 'Kode verifikasi telah dibuat. Berlaku 15 menit.',
+    dev_code: code,
+    delivery: 'demo', // will become 'email' once email service is wired
+    masked_email: email.replace(/^(.{2}).*@/, '$1***@'),
+  })
+}
+
+async function resetPassword(request) {
+  const body = await request.json().catch(() => ({}))
+  const email = String(body.email || '').trim().toLowerCase()
+  const code = String(body.code || '').trim()
+  const newPassword = String(body.new_password || '')
+  if (!email || !code || !newPassword) return NextResponse.json({ error: 'Email, kode, dan kata sandi baru wajib diisi' }, { status: 400 })
+  if (newPassword.length < 6) return NextResponse.json({ error: 'Kata sandi baru minimal 6 karakter' }, { status: 400 })
+  const col = await users()
+  const doc = await col.findOne({ email })
+  if (!doc || !doc.reset_code || doc.reset_code !== code) return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
+  if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
+  await col.updateOne({ email }, { $set: { password: newPassword, updated_at: new Date() }, $unset: { reset_code: '', reset_expires: '' } })
+  return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
 }
 
 /* ============ AI INSIGHTS ============ */

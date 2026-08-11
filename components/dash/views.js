@@ -1289,12 +1289,6 @@ function CompareCell({ prev, curr, pct = false, isLast = false }) {
 
 /* =========== USERS & ROLES TAB =========== */
 const ROLE_COLORS = { Admin:'#DC2626', Analyst:'#2563EB', Executive:'#D97706', Viewer:'#64748B' }
-const PRESET_STATIC = [
-  { name:'Annisa Permatasari', email:'annisa.permatasari@dikdasmen.belajar.id', role:'Admin',     jabatan:'Kepala Sub-Bagian Humas',        source:'preset' },
-  { name:'Rina Setiawati',     email:'rina.setiawati@dikdasmen.belajar.id',     role:'Analyst',   jabatan:'Analis Komunikasi Digital',      source:'preset' },
-  { name:'Budi Santosa',       email:'budi.santosa@dikdasmen.belajar.id',       role:'Executive', jabatan:'Direktur Kursus dan Pelatihan',  source:'preset' },
-  { name:'Dewi Rahayu',        email:'dewi.rahayu@dikdasmen.belajar.id',        role:'Viewer',    jabatan:'Staf Publikasi',                 source:'preset' },
-]
 
 function UsersRolesTab({ roles }) {
   const [list, setList] = useState([])
@@ -1329,10 +1323,24 @@ function UsersRolesTab({ roles }) {
 
   async function del(email) {
     if (!confirm(`Hapus pengguna ${email}?`)) return
-    await fetch(`/api/users/${encodeURIComponent(email)}`, { method:'DELETE' })
+    const r = await fetch(`/api/users/${encodeURIComponent(email)}`, { method:'DELETE' })
+    const j = await r.json().catch(()=>({}))
+    if (!r.ok) { setFlash({ ok:false, msg: j.error || 'Gagal menghapus' }); setTimeout(()=>setFlash(null), 4500); return }
     setFlash({ ok:true, msg:`Pengguna ${email} dihapus.` })
     load()
     setTimeout(()=>setFlash(null), 4000)
+  }
+
+  async function toggleActive(email, currentActive) {
+    const newActive = !currentActive
+    try {
+      const r = await fetch('/api/users/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, active: newActive }) })
+      const j = await r.json()
+      if (!r.ok) { setFlash({ ok:false, msg: j.error || 'Gagal mengubah status' }); return }
+      setFlash({ ok:true, msg:`Pengguna ${email} ${newActive?'diaktifkan':'dinonaktifkan'}.` })
+      load()
+      setTimeout(()=>setFlash(null), 4000)
+    } catch { setFlash({ ok:false, msg:'Server error' }) }
   }
 
   function editUser(u) {
@@ -1342,10 +1350,15 @@ function UsersRolesTab({ roles }) {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const allUsers = [...PRESET_STATIC, ...list.filter(u => !PRESET_STATIC.find(p => p.email.toLowerCase() === u.email.toLowerCase()))]
+  const allUsers = list
 
   return (
     <div className="space-y-5">
+      {flash && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${flash.ok?'bg-emerald-50 border-emerald-200 text-emerald-800':'bg-red-50 border-red-200 text-red-800'}`}>
+          {flash.ok ? '✅' : '⚠️'} {flash.msg}
+        </div>
+      )}
       {/* Role definitions */}
       <Card title="Definisi Peran" desc="Peran dan hak akses menu">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -1393,30 +1406,36 @@ function UsersRolesTab({ roles }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
-              <tr>{['Pengguna','Email','Peran','Jabatan','Sumber','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
+              <tr>{['Pengguna','Email','Peran','Jabatan','Status','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {allUsers.map(u => (
-                <tr key={u.email} className="border-t border-slate-100 hover:bg-slate-50/60">
+                <tr key={u.email} className={`border-t border-slate-100 hover:bg-slate-50/60 ${u.active===false?'opacity-60':''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.initial || (u.name||'').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>
-                      <span className="font-medium text-slate-900">{u.name}</span>
+                      <div>
+                        <div className="font-medium text-slate-900 flex items-center gap-1.5">{u.name} {u.seeded && <span className="text-[9px] px-1 py-0.5 rounded font-semibold bg-slate-100 text-slate-500">Bawaan</span>}</div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500 font-mono">{u.email}</td>
                   <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold text-white" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.role}</span></td>
                   <td className="px-4 py-3 text-xs text-slate-600">{u.jabatan || '—'}</td>
-                  <td className="px-4 py-3"><span className={`text-[10px] px-2 py-0.5 rounded-md ${u.source==='preset'?'bg-slate-100 text-slate-600':'bg-blue-50 text-blue-700'}`}>{u.source==='preset'?'Bawaan':'Database'}</span></td>
                   <td className="px-4 py-3">
-                    {u.source === 'preset' ? (
-                      <span className="text-[10px] text-slate-400 italic">Tidak dapat diubah</span>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <button onClick={()=>editUser(u)} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700">✎ Edit</button>
-                        <button onClick={()=>del(u.email)} className="text-xs px-2.5 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700">🗑 Hapus</button>
-                      </div>
-                    )}
+                    <button onClick={()=>toggleActive(u.email, u.active !== false)}
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition ring-1 ${u.active !== false ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-500 ring-slate-200 hover:bg-slate-200'}`}>
+                      <span className={`relative inline-block w-8 h-4 rounded-full transition ${u.active !== false ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${u.active !== false ? 'translate-x-4' : ''}`} />
+                      </span>
+                      {u.active !== false ? 'Aktif' : 'Nonaktif'}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={()=>editUser(u)} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700">✎ Edit</button>
+                      <button onClick={()=>del(u.email)} className="text-xs px-2.5 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700">🗑 Hapus</button>
+                    </div>
                   </td>
                 </tr>
               ))}

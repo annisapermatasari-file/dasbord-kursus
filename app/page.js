@@ -71,7 +71,7 @@ export default function App() {
   function loginAs(u) { setUser(u); try { localStorage.setItem('dashboard_user', JSON.stringify(u)) } catch {}; setActive(u.role === 'Executive' ? 'executive' : 'overview') }
   function logout() { setUser(null); try { localStorage.removeItem('dashboard_user') } catch {}; setActive('overview') }
 
-  if (!user) return <LoginScreen onLogin={loginAs} />
+  if (!user) return <AuthScreen onLogin={loginAs} />
 
   const days = (PERIODS.find(p => p.key === period) || PERIODS[2]).days
   const visibleMenu = MENU.filter(m => hasAccess(user.role, m.key))
@@ -206,7 +206,14 @@ function PrintFooter({ user }) {
   )
 }
 
-function LoginScreen({ onLogin }) {
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState('login') // 'login' | 'forgot'
+  return mode === 'forgot'
+    ? <ForgotPasswordScreen onBack={()=>setMode('login')} />
+    : <LoginScreen onLogin={onLogin} onForgot={()=>setMode('forgot')} />
+}
+
+function LoginScreen({ onLogin, onForgot }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -217,10 +224,6 @@ function LoginScreen({ onLogin }) {
     e?.preventDefault?.()
     setError('')
     const em = email.trim().toLowerCase()
-    // Check hardcoded presets first (offline demo accounts)
-    const preset = PRESET_USERS.find(u => u.email.toLowerCase() === em && u.password === password)
-    if (preset) { onLogin(preset); return }
-    // Then try MongoDB user
     try {
       const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: em, password }) })
       const j = await r.json()
@@ -293,6 +296,11 @@ function LoginScreen({ onLogin }) {
 
             <button type="submit" className="w-full py-3 rounded-lg bg-[#0B2545] text-white font-semibold hover:bg-[#0e2f5c] transition shadow-sm">Masuk</button>
 
+            <div className="flex items-center justify-between text-xs pt-1">
+              <button type="button" onClick={onForgot} className="text-blue-600 hover:text-blue-800 font-medium">Lupa kata sandi?</button>
+              <a href="#" className="text-slate-400 hover:text-slate-600">Butuh bantuan?</a>
+            </div>
+
             <div className="flex items-start gap-2 pt-2 text-[11px] text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>Otorisasi akun media sosial dilakukan setelah masuk. Kata sandi media sosial tidak pernah diminta atau disimpan di sistem ini.</span>
@@ -328,3 +336,139 @@ function LoginScreen({ onLogin }) {
     </div>
   )
 }
+
+function ForgotPasswordScreen({ onBack }) {
+  const [step, setStep] = useState(1) // 1=request, 2=verify+reset, 3=done
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [devCode, setDevCode] = useState(null)
+  const [masked, setMasked] = useState('')
+
+  async function requestCode(e) {
+    e?.preventDefault?.()
+    setError(''); setLoading(true)
+    try {
+      const r = await fetch('/api/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email }) })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error || 'Gagal meminta kode reset.'); setLoading(false); return }
+      setDevCode(j.dev_code); setMasked(j.masked_email || email); setStep(2)
+    } catch { setError('Server error') }
+    setLoading(false)
+  }
+  async function submitReset(e) {
+    e?.preventDefault?.()
+    setError(''); setLoading(true)
+    try {
+      const r = await fetch('/api/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, code, new_password: newPw }) })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error || 'Gagal reset kata sandi.'); setLoading(false); return }
+      setStep(3)
+    } catch { setError('Server error') }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-2">
+      {/* LEFT branding */}
+      <div className="p-8 lg:p-16 flex flex-col justify-between bg-white">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center ring-1 ring-slate-200"><ShieldCheck className="w-7 h-7 text-white" /></div>
+            <div><div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Kemendikdasmen</div><div className="text-sm font-bold text-slate-900 leading-tight">Direktorat Kursus &amp; Pelatihan</div></div>
+          </div>
+          <div className="mt-14 max-w-lg">
+            <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.1]">Lupa Kata Sandi?<br />Tidak masalah.</h1>
+            <p className="text-slate-600 mt-5 leading-relaxed">Kami akan mengirim kode verifikasi <strong>6 digit</strong> ke email Anda. Gunakan kode tersebut untuk mengatur kata sandi baru.</p>
+            <div className="mt-6 space-y-3">
+              {[
+                { n:1, t:'Masukkan email institusi Anda', d:'Sistem akan memverifikasi keberadaan akun.' },
+                { n:2, t:'Cek email untuk kode 6 digit', d:'Kode berlaku selama 15 menit sejak dibuat.' },
+                { n:3, t:'Buat kata sandi baru', d:'Minimal 6 karakter. Kombinasikan huruf, angka, & simbol.' },
+              ].map(s => (
+                <div key={s.n} className="flex gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step>=s.n?'bg-blue-600 text-white':'bg-slate-200 text-slate-500'}`}>{s.n}</div>
+                  <div><div className="text-sm font-semibold text-slate-800">{s.t}</div><div className="text-xs text-slate-500 mt-0.5">{s.d}</div></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="text-xs text-slate-400 pt-8">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah</div>
+      </div>
+
+      {/* RIGHT form */}
+      <div className="p-8 lg:p-16 flex items-center justify-center bg-slate-50">
+        <div className="w-full max-w-md">
+          <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 mb-4"><ChevronLeft className="w-3 h-3" /> Kembali ke halaman masuk</button>
+
+          {step === 1 && (
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Reset Kata Sandi</h2>
+              <p className="text-slate-500 mt-1 text-sm">Masukkan email akun institusi Anda. Kami akan kirim kode verifikasi.</p>
+              <form onSubmit={requestCode} className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Email</label>
+                  <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="nama@dikdasmen.belajar.id" className="mt-1 w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                </div>
+                {error && <div className="text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
+                <button type="submit" disabled={loading} className="w-full py-3 rounded-lg bg-[#0B2545] text-white font-semibold hover:bg-[#0e2f5c] disabled:opacity-60 shadow-sm">{loading?'Mengirim…':'Kirim Kode Verifikasi'}</button>
+              </form>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Verifikasi &amp; Kata Sandi Baru</h2>
+              <p className="text-slate-500 mt-1 text-sm">Kode verifikasi dikirim ke <span className="font-mono text-slate-700">{masked}</span></p>
+              {devCode !== null && (
+                <div className="mt-4 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/60 p-4">
+                  <div className="text-[10px] uppercase tracking-widest text-amber-700 font-bold">⚠ Mode Demo — Email Service Belum Diaktifkan</div>
+                  <div className="text-xs text-amber-800 mt-1">Kode verifikasi Anda ditampilkan di sini karena SendGrid/SMTP belum disambungkan. Di produksi kode akan dikirim ke email.</div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="flex-1 font-mono text-3xl font-black tracking-widest text-amber-900 text-center bg-white rounded-lg py-3 border border-amber-200">{devCode}</div>
+                    <button type="button" onClick={()=>{ setCode(devCode); }} className="text-xs px-3 py-2 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-900 font-medium">Isi otomatis</button>
+                  </div>
+                </div>
+              )}
+              {devCode === null && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">Jika email Anda terdaftar, kode verifikasi telah dikirim. Cek folder inbox dan spam.</div>
+              )}
+              <form onSubmit={submitReset} className="mt-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Kode Verifikasi</label>
+                  <input type="text" required value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="6 digit angka" maxLength={6} inputMode="numeric" className="mt-1 w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Kata Sandi Baru</label>
+                  <div className="relative mt-1">
+                    <input type={showPw?'text':'password'} required value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Minimal 6 karakter" className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                    <button type="button" onClick={()=>setShowPw(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100">{showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                  </div>
+                </div>
+                {error && <div className="text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={()=>{ setStep(1); setCode(''); setNewPw(''); setError('') }} className="text-sm px-4 py-3 rounded-lg border border-slate-200 hover:bg-slate-50">Ganti Email</button>
+                  <button type="submit" disabled={loading} className="flex-1 py-3 rounded-lg bg-[#0B2545] text-white font-semibold hover:bg-[#0e2f5c] disabled:opacity-60 shadow-sm">{loading?'Memproses…':'Reset Kata Sandi'}</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto"><ShieldCheck className="w-9 h-9" /></div>
+              <h2 className="text-xl font-bold text-slate-900 mt-4">Kata Sandi Berhasil Direset</h2>
+              <p className="text-slate-500 mt-2 text-sm">Silakan masuk kembali menggunakan kata sandi baru Anda.</p>
+              <button onClick={onBack} className="mt-6 inline-block px-5 py-3 rounded-lg bg-[#0B2545] text-white font-semibold hover:bg-[#0e2f5c]">Ke Halaman Masuk →</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
