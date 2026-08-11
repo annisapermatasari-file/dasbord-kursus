@@ -650,7 +650,7 @@ export function SettingsView() {
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
   const accountsRows = [
@@ -782,6 +782,7 @@ export function SettingsView() {
 
       {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">{d}</div></div></div>))}</div></Card>)}
       {tab==='users' && <UsersRolesTab roles={roles} />}
+      {tab==='stats' && <ImpactStatsTab />}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
       {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
@@ -1442,6 +1443,115 @@ function UsersRolesTab({ roles }) {
               {loading && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
             </tbody>
           </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+
+/* =========== IMPACT STATS TAB =========== */
+function ImpactStatsTab() {
+  const [stats, setStats] = useState([])
+  const [updatedAt, setUpdatedAt] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [flash, setFlash] = useState(null)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/impact-stats'); const j = await r.json(); setStats(j.stats || []); setUpdatedAt(j.updated_at) } catch {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  function update(i, key, val) {
+    setStats(s => s.map((x,idx) => idx===i ? { ...x, [key]: val } : x))
+  }
+  async function save() {
+    setError('')
+    if (stats.length !== 4) { setError('Harus tepat 4 statistik'); return }
+    if (stats.some(s => !s.v || !s.l)) { setError('Nilai dan label wajib diisi untuk semua statistik'); return }
+    setLoading(true)
+    try {
+      const r = await fetch('/api/impact-stats', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stats }) })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error || 'Gagal menyimpan'); setLoading(false); return }
+      setUpdatedAt(j.updated_at)
+      setFlash({ ok:true, msg:'Statistik Dampak berhasil disimpan. Halaman login akan menampilkan angka baru.' })
+      setTimeout(()=>setFlash(null), 5000)
+    } catch { setError('Server error') }
+    setLoading(false)
+  }
+  function reset() {
+    if (!confirm('Kembalikan ke nilai default? Perubahan tidak tersimpan akan hilang.')) return
+    setStats([
+      { v:'1,2 Jt+',  l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi',        source:'' },
+      { v:'12.000+',  l:'LKP Aktif',             s:'Tersebar 34 provinsi',      source:'' },
+      { v:'86%',      l:'Penempatan Kerja',      s:'Alumni bekerja/berwirausaha', source:'' },
+      { v:'450+',     l:'Bidang Keahlian',       s:'Selaras SKKNI & industri',  source:'' },
+    ])
+  }
+
+  return (
+    <div className="space-y-5">
+      {flash && <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 px-4 py-3 text-sm">✅ {flash.msg}</div>}
+
+      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 flex items-start gap-3">
+        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+        <div className="text-sm text-blue-900">
+          <div className="font-semibold mb-1">Sumber Data Statistik Dampak</div>
+          <p className="leading-relaxed">Ditjen Vokasi belum menyediakan API publik untuk statistik LKP dan alumni bersertifikasi. Halaman ini menjadi <strong>single source of truth</strong>: perubahan yang Anda simpan langsung tampil di halaman login publik. Untuk audit, isikan link sumber data (NILEK, laporan tahunan Ditjen, BNSP, dsb) di setiap statistik.</p>
+        </div>
+      </div>
+
+      <Card
+        title="Statistik Dampak Direktorat"
+        desc={updatedAt ? `Terakhir diperbarui: ${new Date(updatedAt).toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' })}` : 'Belum ada perubahan'}
+        right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
+      >
+        <div className="space-y-3">
+          {stats.map((s, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 p-4">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Statistik #{i+1}</div>
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
+                <div className="md:col-span-1">
+                  <label className="text-[11px] text-slate-600">Nilai</label>
+                  <input value={s.v||''} onChange={e=>update(i,'v',e.target.value)} placeholder="1,2 Jt+" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-[11px] text-slate-600">Label Utama</label>
+                  <input value={s.l||''} onChange={e=>update(i,'l',e.target.value)} placeholder="Alumni Bersertifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="text-[11px] text-slate-600">Sub-label</label>
+                  <input value={s.s||''} onChange={e=>update(i,'s',e.target.value)} placeholder="BNSP-terverifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div className="md:col-span-6">
+                  <label className="text-[11px] text-slate-600">Sumber Data (URL laporan/dashboard resmi Ditjen, opsional)</label>
+                  <input value={s.source||''} onChange={e=>update(i,'source',e.target.value)} placeholder="https://nilek.kemdikbud.go.id/… atau laporan tahunan Ditjen Vokasi 2024" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  {s.updated_at && <div className="text-[10px] text-slate-400 mt-1">Diperbarui {new Date(s.updated_at).toLocaleString('id-ID',{ dateStyle:'medium', timeStyle:'short' })}</div>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {error && <div className="mt-3 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
+      </Card>
+
+      {/* Live preview */}
+      <Card title="Pratinjau di Halaman Login" desc="Tampilan akhir yang akan dilihat pengunjung">
+        <div className="rounded-2xl bg-gradient-to-br from-[#0B2545] via-[#0B2545] to-[#1D4ED8] p-5 text-white">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {stats.map((s, i) => (
+              <div key={i} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
+                <div className="text-2xl font-black tracking-tight text-white">{s.v || '—'}</div>
+                <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l || '—'}</div>
+                <div className="text-[10px] text-blue-100/70 mt-0.5">{s.s || ''}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </Card>
     </div>

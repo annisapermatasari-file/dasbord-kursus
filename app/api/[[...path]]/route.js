@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { connections, users } from '@/lib/db'
+import { connections, users, db } from '@/lib/db'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
@@ -83,6 +83,7 @@ export async function POST(request, { params }) {
     if (path === 'auth/login') return authLogin(request)
     if (path === 'auth/forgot-password') return forgotPassword(request)
     if (path === 'auth/reset-password') return resetPassword(request)
+    if (path === 'impact-stats') return saveImpactStats(request)
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('POST error', path, e)
@@ -500,6 +501,42 @@ async function resetPassword(request) {
   if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
   await col.updateOne({ email }, { $set: { password: newPassword, updated_at: new Date() }, $unset: { reset_code: '', reset_expires: '' } })
   return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
+}
+
+/* ============ IMPACT STATS ============ */
+const DEFAULT_STATS = [
+  { v:'1,2 Jt+',  l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi',       source:'' },
+  { v:'12.000+',  l:'LKP Aktif',             s:'Tersebar 34 provinsi',     source:'' },
+  { v:'86%',      l:'Penempatan Kerja',      s:'Alumni bekerja/berwirausaha', source:'' },
+  { v:'450+',     l:'Bidang Keahlian',       s:'Selaras SKKNI & industri', source:'' },
+]
+async function impactStatsCol() { return (await db()).collection('impact_stats') }
+async function getImpactStats() {
+  const col = await impactStatsCol()
+  let doc = await col.findOne({ _id: 'main' })
+  if (!doc) {
+    const now = new Date()
+    doc = { _id: 'main', stats: DEFAULT_STATS.map(s => ({ ...s, updated_at: now })), updated_at: now }
+    try { await col.insertOne(doc) } catch {}
+  }
+  return NextResponse.json({ stats: doc.stats, updated_at: doc.updated_at })
+}
+async function saveImpactStats(request) {
+  const body = await request.json().catch(() => ({}))
+  const incoming = Array.isArray(body.stats) ? body.stats.slice(0,4) : []
+  if (incoming.length !== 4) return NextResponse.json({ error: 'Harus tepat 4 statistik' }, { status: 400 })
+  const now = new Date()
+  const cleaned = incoming.map(s => ({
+    v: String(s.v || '').trim().slice(0,20),
+    l: String(s.l || '').trim().slice(0,60),
+    s: String(s.s || '').trim().slice(0,120),
+    source: String(s.source || '').trim().slice(0,300),
+    updated_at: now,
+  }))
+  if (cleaned.some(s => !s.v || !s.l)) return NextResponse.json({ error: 'Nilai dan label wajib diisi untuk semua statistik' }, { status: 400 })
+  const col = await impactStatsCol()
+  await col.updateOne({ _id: 'main' }, { $set: { stats: cleaned, updated_at: now } }, { upsert: true })
+  return NextResponse.json({ ok: true, stats: cleaned, updated_at: now })
 }
 
 /* ============ AI INSIGHTS ============ */

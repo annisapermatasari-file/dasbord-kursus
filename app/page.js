@@ -219,6 +219,16 @@ function LoginScreen({ onLogin, onForgot }) {
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [showHint, setShowHint] = useState(false)
+  const [impactStats, setImpactStats] = useState([
+    { v:'1,2 Jt+',  l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi' },
+    { v:'12.000+',  l:'LKP Aktif',             s:'Tersebar 34 provinsi' },
+    { v:'86%',      l:'Penempatan Kerja',      s:'Alumni bekerja/berwirausaha' },
+    { v:'450+',     l:'Bidang Keahlian',       s:'Selaras SKKNI & industri' },
+  ])
+
+  useEffect(() => {
+    fetch('/api/impact-stats').then(r=>r.json()).then(j => { if (j.stats?.length) setImpactStats(j.stats) }).catch(()=>{})
+  }, [])
 
   async function submit(e) {
     e?.preventDefault?.()
@@ -271,12 +281,7 @@ function LoginScreen({ onLogin, onForgot }) {
           <div className="mt-10">
             <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { v:'1,2 Jt+', l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi' },
-                { v:'12.000+', l:'LKP Aktif', s:'Tersebar 34 provinsi' },
-                { v:'86%',    l:'Penempatan Kerja', s:'Alumni bekerja/berwirausaha' },
-                { v:'450+',   l:'Bidang Keahlian', s:'Selaras SKKNI & industri' },
-              ].map(s => (
+              {impactStats.map(s => (
                 <div key={s.l} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
                   <div className="text-2xl font-black tracking-tight text-white">{s.v}</div>
                   <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l}</div>
