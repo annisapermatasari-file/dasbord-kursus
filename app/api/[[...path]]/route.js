@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { connections } from '@/lib/db'
+import { connections, users } from '@/lib/db'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
@@ -16,12 +16,21 @@ function googleRedirect(request) { return baseUrl(request) + '/api/oauth/google/
 function tiktokRedirect(request) { return baseUrl(request) + '/api/oauth/tiktok/callback' }
 
 function popupResponse({ ok, provider, message }) {
-  const html = `<!doctype html><html><body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;">
-    <h2 style="color:${ok?'#059669':'#DC2626'}">${ok?'Berhasil Terhubung ':'Gagal Menghubungkan '}${provider}</h2>
-    <p style="color:#64748B">${message || ''}</p>
-    <p style="color:#64748B;font-size:12px">Jendela ini akan tertutup otomatis…</p>
+  const isRedirectErr = message && /redirect|whitelist|redirect_uri|not.*allowed|url.*blocked/i.test(message)
+  const helpHtml = isRedirectErr ? `
+    <div style="margin-top:16px;padding:12px;background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:6px;text-align:left;font-size:12px;color:#78350F">
+      <strong>Redirect URI belum didaftarkan.</strong><br>
+      Tambahkan URL berikut di console app ${provider}, tepat pada kolom OAuth Redirect URIs:<br>
+      <code style="display:block;margin-top:6px;padding:6px;background:#fff;border:1px solid #FCD34D;border-radius:4px;font-size:11px;word-break:break-all">${(process.env.NEXT_PUBLIC_BASE_URL||'').replace(/'/g,'')}/api/oauth/${provider.toLowerCase()}/callback</code>
+      Atau gunakan opsi <strong>"Paste Access Token Manual"</strong> di Settings sebagai workaround.
+    </div>` : ''
+  const html = `<!doctype html><html><body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;max-width:520px;margin:0 auto;">
+    <h2 style="color:${ok?'#059669':'#DC2626'};margin:0 0 8px">${ok?'✅ Berhasil Terhubung ':'⚠️ Gagal Menghubungkan '}${provider}</h2>
+    <p style="color:#64748B;font-size:13px">${message || ''}</p>
+    ${helpHtml}
+    <p style="color:#94A3B8;font-size:11px;margin-top:20px">${ok?'Jendela ini akan tertutup otomatis…':'Anda dapat menutup jendela ini.'}</p>
     <script>try { window.opener && window.opener.postMessage({ type:'oauth', ok:${ok?'true':'false'}, provider:'${provider}', message:${JSON.stringify(message||'')} }, '*') } catch(e){}
-    setTimeout(()=>window.close(), 1200)</script></body></html>`
+    ${ok ? 'setTimeout(()=>window.close(), 1500)' : ''}</script></body></html>`
   return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
@@ -49,6 +58,7 @@ export async function GET(request, { params }) {
     if (path === 'oauth/tiktok/callback') return tiktokCallback(request)
 
     if (path === 'connections') return listConnections()
+    if (path === 'users') return listUsers()
     if (path === 'live/facebook/summary') return liveFacebook(request)
     if (path === 'live/instagram/summary') return liveInstagram(request)
     if (path === 'live/youtube/summary') return liveYoutube(request)
@@ -67,6 +77,8 @@ export async function POST(request, { params }) {
   const path = (p?.path || []).join('/')
   try {
     if (path === 'ai-insights') return aiInsights(request)
+    if (path === 'users') return createUser(request)
+    if (path === 'auth/login') return authLogin(request)
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('POST error', path, e)
@@ -82,6 +94,12 @@ export async function DELETE(request, { params }) {
       const provider = path.split('/')[1]
       const col = await connections()
       await col.deleteMany({ provider })
+      return NextResponse.json({ ok: true })
+    }
+    if (path.startsWith('users/')) {
+      const email = decodeURIComponent(path.slice('users/'.length))
+      const col = await users()
+      await col.deleteOne({ email: email.toLowerCase() })
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -345,6 +363,50 @@ function summarizeGa4(report) {
     users: sum(0), newUsers: sum(1), sessions: sum(2), pageViews: sum(3),
     bounceRate: +(avg(4)*100).toFixed(2), avgSessionDuration: Math.round(avg(5)),
   }
+}
+
+/* ============ USERS ============ */
+const ROLE_ALLOWED = ['Admin','Analyst','Executive','Viewer']
+
+function initialsOf(name) { return (name||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '??' }
+
+async function listUsers() {
+  const col = await users()
+  const docs = await col.find({}, { projection: { password: 0 } }).sort({ created_at: -1 }).toArray()
+  return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, created_at: d.created_at })) })
+}
+
+async function createUser(request) {
+  const body = await request.json().catch(() => ({}))
+  const name = String(body.name || '').trim()
+  const email = String(body.email || '').trim().toLowerCase()
+  const password = String(body.password || '')
+  const role = String(body.role || '').trim()
+  const jabatan = String(body.jabatan || '').trim()
+  if (!name || !email || !password || !role) return NextResponse.json({ error: 'Nama, email, kata sandi, dan peran wajib diisi' }, { status: 400 })
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ error: 'Format email tidak valid' }, { status: 400 })
+  if (!ROLE_ALLOWED.includes(role)) return NextResponse.json({ error: `Peran harus salah satu dari: ${ROLE_ALLOWED.join(', ')}` }, { status: 400 })
+  if (password.length < 6) return NextResponse.json({ error: 'Kata sandi minimal 6 karakter' }, { status: 400 })
+  const col = await users()
+  const now = new Date()
+  const doc = { name, email, password, role, jabatan, initial: initialsOf(name), active: true, updated_at: now }
+  try {
+    await col.updateOne({ email }, { $set: doc, $setOnInsert: { created_at: now } }, { upsert: true })
+    return NextResponse.json({ ok: true, user: { name, email, role, jabatan, initial: doc.initial } })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal menyimpan user' }, { status: 500 })
+  }
+}
+
+async function authLogin(request) {
+  const body = await request.json().catch(() => ({}))
+  const email = String(body.email || '').trim().toLowerCase()
+  const password = String(body.password || '')
+  if (!email || !password) return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
+  const col = await users()
+  const doc = await col.findOne({ email })
+  if (!doc || doc.password !== password || doc.active === false) return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+  return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
 }
 
 /* ============ AI INSIGHTS ============ */

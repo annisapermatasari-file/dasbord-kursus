@@ -781,7 +781,7 @@ export function SettingsView() {
       {tab==='website' && (<Card title="Website Analytics — Google Analytics 4" desc="Hubungkan via Google OAuth pada tab API Connections. Jika sudah tersambung, properti akan tampil di sini."><div className="text-sm text-slate-700">{google?.ga_properties?.length ? (<div className="space-y-2">{google.ga_properties.map(pr => <div key={pr.id} className="p-3 rounded-lg border border-slate-200 flex items-center gap-3"><Globe className="w-5 h-5 text-sky-600" /><div className="flex-1"><div className="font-medium">{pr.displayName}</div><div className="text-xs text-slate-500">{pr.parent} · Property ID <span className="font-mono">{pr.id}</span></div></div><span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Aktif</span></div>)}</div>) : <div className="text-slate-500">Belum ada GA4 property terhubung. Buka tab <strong>API Connections</strong> → Hubungkan Google.</div>}</div></Card>)}
 
       {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">{d}</div></div></div>))}</div></Card>)}
-      {tab==='users' && (<Card title="Users & Roles" desc="Manajemen pengguna dan peran"><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">{roles.map(r=><div key={r.name} className={`p-3 rounded-lg ring-1 ${r.color}`}><div className="font-semibold">{r.name}</div><div className="text-xs opacity-90 mt-1">{r.desc}</div></div>)}</div><table className="w-full text-sm"><thead className="text-xs text-slate-500"><tr><th className="text-left py-2">Nama</th><th className="text-left">Email</th><th className="text-left">Role</th><th className="text-left">Status</th></tr></thead><tbody>{[['Andi Prakoso','andi@kemdikdasmen.go.id','Admin','Aktif'],['Rina Setiawati','rina@kemdikdasmen.go.id','Analyst','Aktif'],['Budi Santosa','budi@kemdikdasmen.go.id','Executive','Aktif'],['Dewi Rahayu','dewi@kemdikdasmen.go.id','Viewer','Nonaktif']].map(r=>(<tr key={r[0]} className="border-t border-slate-100"><td className="py-2.5">{r[0]}</td><td className="text-slate-500 text-xs">{r[1]}</td><td>{r[2]}</td><td><span className={`text-xs px-2 py-0.5 rounded-md ${r[3]==='Aktif'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600'}`}>{r[3]}</span></td></tr>))}</tbody></table></Card>)}
+      {tab==='users' && <UsersRolesTab roles={roles} />}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
       {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
@@ -1284,5 +1284,148 @@ function CompareCell({ prev, curr, pct = false, isLast = false }) {
     <td className="px-3 py-3 font-semibold text-slate-900">{pct ? curr+'%' : formatNumber(curr)}</td>
     <td className={`px-3 py-3 font-medium ${!isLast?'border-r border-slate-100':''} ${up?'text-emerald-600':'text-red-500'}`}>{up?'▲ +':'▼ '}{delta}%</td>
   </>)
+}
+
+
+/* =========== USERS & ROLES TAB =========== */
+const ROLE_COLORS = { Admin:'#DC2626', Analyst:'#2563EB', Executive:'#D97706', Viewer:'#64748B' }
+const PRESET_STATIC = [
+  { name:'Annisa Permatasari', email:'annisa.permatasari@dikdasmen.belajar.id', role:'Admin',     jabatan:'Kepala Sub-Bagian Humas',        source:'preset' },
+  { name:'Rina Setiawati',     email:'rina.setiawati@dikdasmen.belajar.id',     role:'Analyst',   jabatan:'Analis Komunikasi Digital',      source:'preset' },
+  { name:'Budi Santosa',       email:'budi.santosa@dikdasmen.belajar.id',       role:'Executive', jabatan:'Direktur Kursus dan Pelatihan',  source:'preset' },
+  { name:'Dewi Rahayu',        email:'dewi.rahayu@dikdasmen.belajar.id',        role:'Viewer',    jabatan:'Staf Publikasi',                 source:'preset' },
+]
+
+function UsersRolesTab({ roles }) {
+  const [list, setList] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [flash, setFlash] = useState(null)
+  const [form, setForm] = useState({ name:'', email:'', password:'', role:'Analyst', jabatan:'' })
+  const [error, setError] = useState('')
+  const [editing, setEditing] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/users'); const j = await r.json(); setList(j.users || []) } catch {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  async function submit(e) {
+    e?.preventDefault?.()
+    setError('')
+    if (!form.name || !form.email || !form.password || !form.role) { setError('Semua kolom wajib diisi'); return }
+    if (form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
+    try {
+      const r = await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) })
+      const j = await r.json()
+      if (!r.ok) { setError(j.error || 'Gagal menyimpan'); return }
+      setFlash({ ok:true, msg: editing ? `Pengguna ${form.name} diperbarui.` : `Pengguna ${form.name} ditambahkan.` })
+      setForm({ name:'', email:'', password:'', role:'Analyst', jabatan:'' })
+      setEditing(false); load()
+      setTimeout(()=>setFlash(null), 4000)
+    } catch (err) { setError('Server error') }
+  }
+
+  async function del(email) {
+    if (!confirm(`Hapus pengguna ${email}?`)) return
+    await fetch(`/api/users/${encodeURIComponent(email)}`, { method:'DELETE' })
+    setFlash({ ok:true, msg:`Pengguna ${email} dihapus.` })
+    load()
+    setTimeout(()=>setFlash(null), 4000)
+  }
+
+  function editUser(u) {
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, jabatan: u.jabatan || '' })
+    setEditing(true)
+    setError('')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const allUsers = [...PRESET_STATIC, ...list.filter(u => !PRESET_STATIC.find(p => p.email.toLowerCase() === u.email.toLowerCase()))]
+
+  return (
+    <div className="space-y-5">
+      {/* Role definitions */}
+      <Card title="Definisi Peran" desc="Peran dan hak akses menu">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {roles.map(r => <div key={r.name} className={`p-3 rounded-lg ring-1 ${r.color}`}><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background: ROLE_COLORS[r.name] }} /><div className="font-semibold">{r.name}</div></div><div className="text-xs opacity-90 mt-1">{r.desc}</div></div>)}
+        </div>
+      </Card>
+
+      {/* Form add/edit */}
+      <Card title={editing ? 'Perbarui Pengguna' : 'Tambah Pengguna Baru'} desc="Isi email dan pilih peran — pengguna langsung dapat masuk ke dashboard">
+        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-600">Nama Lengkap</label>
+            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="cth: Siti Nurhaliza" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600">Email</label>
+            <input type="email" value={form.email} disabled={editing} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="nama@dikdasmen.belajar.id" className={`mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${editing?'bg-slate-100 text-slate-500':''}`} />
+            {editing && <div className="text-[10px] text-slate-400 mt-1">Email tidak dapat diubah saat mengedit</div>}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600">Kata Sandi {editing && <span className="text-slate-400">(isi jika ingin reset)</span>}</label>
+            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 6 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600">Peran</label>
+            <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              {['Admin','Analyst','Executive','Viewer'].map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-slate-600">Jabatan (opsional)</label>
+            <input value={form.jabatan} onChange={e=>setForm(f=>({...f,jabatan:e.target.value}))} placeholder="cth: Analis Data Junior" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          </div>
+          {error && <div className="md:col-span-2 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
+          <div className="md:col-span-2 flex items-center gap-2 pt-1">
+            <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm font-medium hover:bg-[#0e2f5c]">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
+            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Analyst', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
+            {flash && <span className={`ml-auto text-xs px-3 py-1.5 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-red-50 text-red-700 border border-red-200'}`}>{flash.msg}</span>}
+          </div>
+        </form>
+      </Card>
+
+      {/* Users table */}
+      <Card title={`Daftar Pengguna (${allUsers.length})`} desc="Semua pengguna yang dapat login ke dashboard" className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+              <tr>{['Pengguna','Email','Peran','Jabatan','Sumber','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {allUsers.map(u => (
+                <tr key={u.email} className="border-t border-slate-100 hover:bg-slate-50/60">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.initial || (u.name||'').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>
+                      <span className="font-medium text-slate-900">{u.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{u.email}</td>
+                  <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold text-white" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.role}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{u.jabatan || '—'}</td>
+                  <td className="px-4 py-3"><span className={`text-[10px] px-2 py-0.5 rounded-md ${u.source==='preset'?'bg-slate-100 text-slate-600':'bg-blue-50 text-blue-700'}`}>{u.source==='preset'?'Bawaan':'Database'}</span></td>
+                  <td className="px-4 py-3">
+                    {u.source === 'preset' ? (
+                      <span className="text-[10px] text-slate-400 italic">Tidak dapat diubah</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button onClick={()=>editUser(u)} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700">✎ Edit</button>
+                        <button onClick={()=>del(u.email)} className="text-xs px-2.5 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700">🗑 Hapus</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {loading && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
 }
 

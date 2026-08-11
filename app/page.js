@@ -213,13 +213,20 @@ function LoginScreen({ onLogin }) {
   const [error, setError] = useState('')
   const [showHint, setShowHint] = useState(false)
 
-  function submit(e) {
+  async function submit(e) {
     e?.preventDefault?.()
     setError('')
     const em = email.trim().toLowerCase()
-    const found = PRESET_USERS.find(u => u.email.toLowerCase() === em && u.password === password)
-    if (!found) { setError('Email atau kata sandi salah. Coba lagi.'); return }
-    onLogin(found)
+    // Check hardcoded presets first (offline demo accounts)
+    const preset = PRESET_USERS.find(u => u.email.toLowerCase() === em && u.password === password)
+    if (preset) { onLogin(preset); return }
+    // Then try MongoDB user
+    try {
+      const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: em, password }) })
+      const j = await r.json()
+      if (r.ok && j.user) { onLogin(j.user); return }
+      setError(j.error || 'Email atau kata sandi salah. Coba lagi.')
+    } catch (err) { setError('Gagal menghubungi server. Coba lagi.') }
   }
   function fillAs(u) { setEmail(u.email); setPassword(u.password); setError('') }
 
