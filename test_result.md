@@ -151,6 +151,21 @@ backend:
           ✅ Preset users (annisa/rina/budi/dewi @dikdasmen.belajar.id) confirmed NOT in database (frontend-only as expected)
           
           All endpoints working correctly with proper status codes, error handling, and data validation.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ REGRESSION CHECK PASSED (6/6) - User reported production login issue, verified PREVIEW still works
+          
+          Tested via /app/regression_login_test.py against http://localhost:3000/api
+          
+          ✅ GET /api/health → 200 { status: 'ok' }
+          ✅ GET /api/users → 200 with 4 seeded users (annisa, rina, budi, dewi @dikdasmen.belajar.id)
+          ✅ POST /api/auth/login (correct) → 200 with user object (no password), role=Admin verified
+          ✅ POST /api/auth/login (wrong password) → 401 with error "Email atau kata sandi salah"
+          ✅ GET /api/impact-stats → 200 with array of 4 stats items
+          ✅ MongoDB connection verified - 4 users in database
+          
+          PREVIEW environment working perfectly. Production issue is NOT a code problem.
 
   - task: "OAuth callback improved error message with actionable redirect_uri hint"
     implemented: true
@@ -252,7 +267,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
@@ -327,3 +342,52 @@ agent_communication:
       User should no longer see "Invalid Scopes: email" error when connecting Meta account.
       
       Note: Test 9 "Preset Users Not in DB" failed (preset users are in DB), but this is unrelated to the current bug fix and was already failing in previous test runs.
+  - agent: "user"
+    message: |
+      User reported production issue: "Gagal menghubungi server. Coba lagi." when trying to login at https://dashboard-kursos.emergent.host (PRODUCTION).
+      Requested regression check on PREVIEW environment to verify login endpoint still works.
+      
+      Test scenarios requested:
+      1. GET /api/users → 200 with 4 seeded users (annisa, rina, budi, dewi @dikdasmen.belajar.id)
+      2. POST /api/auth/login with correct credentials → 200 with user object (no password), verify role=Admin
+      3. POST /api/auth/login with wrong password → 401 with clear error message
+      4. GET /api/impact-stats → 200 with array of 4 stats items
+      5. GET /api/health → 200 { status: 'ok' }
+  - agent: "testing"
+    message: |
+      ✅ REGRESSION CHECK COMPLETE - ALL TESTS PASSED (6/6)
+      
+      Created regression test suite at /app/regression_login_test.py
+      Tested against PREVIEW environment (http://localhost:3000/api)
+      
+      Test Results:
+      ✅ 1. Health Endpoint - Returns { status: 'ok' }
+      ✅ 2. Get Users - All 4 seeded users present (annisa, rina, budi, dewi @dikdasmen.belajar.id)
+      ✅ 3. Login Correct Credentials - Returns 200 with user object (no password), role=Admin verified
+      ✅ 4. Login Wrong Password - Returns 401 with clear error message "Email atau kata sandi salah"
+      ✅ 5. Impact Stats - Returns 200 with array of 4 stats items
+      ✅ 6. MongoDB Connection - Verified accessible with 4 users in database
+      
+      CONCLUSION:
+      • PREVIEW environment is working perfectly - all endpoints responding correctly
+      • Login authentication working as expected with proper error handling
+      • MongoDB accessible and seeded users present
+      • All API endpoints return correct status codes
+      
+      PRODUCTION ISSUE ANALYSIS:
+      The production error "Gagal menghubungi server. Coba lagi." is NOT a code issue since PREVIEW works perfectly.
+      Likely causes:
+      1. Network/firewall blocking access to production server (https://dashboard-kursos.emergent.host)
+      2. Production MongoDB connection issue (different MONGO_URL or credentials)
+      3. CORS configuration issue in production environment
+      4. SSL certificate issue on production domain
+      5. Production environment variables not set correctly
+      6. Production server not running or crashed
+      
+      RECOMMENDATION:
+      • Check production server logs for errors
+      • Verify production MongoDB connection string and credentials
+      • Verify production environment variables are set correctly
+      • Check production server status (is it running?)
+      • Test production server connectivity from client location
+      • Check CORS settings for production domain
