@@ -273,7 +273,7 @@ function LoginScreen({ onLogin, onForgot }) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { v:'1,2 Jt+', l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi' },
-                { v:'19.500+', l:'LKP Aktif', s:'Tersebar 34 provinsi' },
+                { v:'12.000+', l:'LKP Aktif', s:'Tersebar 34 provinsi' },
                 { v:'86%',    l:'Penempatan Kerja', s:'Alumni bekerja/berwirausaha' },
                 { v:'450+',   l:'Bidang Keahlian', s:'Selaras SKKNI & industri' },
               ].map(s => (
