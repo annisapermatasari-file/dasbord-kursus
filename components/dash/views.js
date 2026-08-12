@@ -616,14 +616,45 @@ export function SettingsView() {
   const [conns, setConns] = useState([])
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState(null)
+  const [ayr, setAyr] = useState(null)
+  const [ayrBusy, setAyrBusy] = useState(false)
 
   const loadConns = async () => {
     setLoading(true)
     try { const r = await fetch('/api/connections'); const j = await r.json(); setConns(j.connections || []) } catch {}
     setLoading(false)
   }
+  const loadAyr = async () => {
+    try { const r = await fetch('/api/ayrshare/status'); const j = await r.json(); setAyr(j) } catch {}
+  }
+  const startAyrConnect = async () => {
+    setAyrBusy(true)
+    try {
+      const r = await fetch('/api/ayrshare/link', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ platforms: ['facebook','instagram','youtube','tiktok'] }) })
+      const j = await r.json()
+      if (j.url) {
+        window.open(j.url, 'ayrshare_link', 'width=720,height=780')
+        setFlash({ ok:true, provider:'Ayrshare', message:'Silakan hubungkan akun media sosial di jendela yang terbuka. Setelah selesai, klik Refresh.' })
+      } else {
+        setFlash({ ok:false, provider:'Ayrshare', message: j.error || 'Gagal generate URL' })
+      }
+    } catch (e) { setFlash({ ok:false, provider:'Ayrshare', message:String(e?.message||e) }) }
+    setAyrBusy(false)
+  }
+  const refreshAyr = async () => {
+    setAyrBusy(true)
+    try { await fetch('/api/ayrshare/refresh'); await loadAyr() } catch {}
+    setAyrBusy(false)
+  }
+  const disconnectAyr = async () => {
+    if (!confirm('Hapus profile Ayrshare? Semua koneksi sosial via Ayrshare akan hilang.')) return
+    setAyrBusy(true)
+    try { await fetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
+    setAyrBusy(false)
+  }
   useEffect(() => {
     loadConns()
+    loadAyr()
     const onMsg = (e) => {
       if (e.data?.type === 'oauth') {
         setFlash({ ok: e.data.ok, provider: e.data.provider, message: e.data.message })
@@ -774,6 +805,58 @@ export function SettingsView() {
                 </div>
               )
             })()}
+          </Card>
+
+          <Card title="Ayrshare — Multi-Platform via 1 Integrasi" desc="Alternatif terpadu: hubungkan Instagram, Facebook, YouTube & TikTok via Ayrshare (tanpa perlu OAuth manual per platform)">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm">A</div>
+              <div className="flex-1 min-w-0">
+                {!ayr?.configured ? (
+                  <>
+                    <div className="font-medium text-slate-900">Kredensial Ayrshare belum diset</div>
+                    <div className="text-xs text-slate-500">Set env <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_API_KEY</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_DOMAIN</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_PRIVATE_KEY</code></div>
+                  </>
+                ) : !ayr?.hasProfile ? (
+                  <>
+                    <div className="font-medium text-slate-900">Belum ada profile Ayrshare</div>
+                    <div className="text-xs text-slate-500">Klik "Hubungkan via Ayrshare" untuk membuat profile & mendapatkan URL koneksi akun sosial</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-medium text-emerald-700">✅ Profile aktif · {ayr.profile?.title}</div>
+                    <div className="text-xs text-slate-500">
+                      {ayr.activeSocialAccounts?.length ? (
+                        <>Akun terhubung: {ayr.activeSocialAccounts.join(', ')} · Post bulan ini {ayr.monthlyPostCount || 0}{ayr.monthlyPostQuota ? `/${ayr.monthlyPostQuota}` : ''}</>
+                      ) : (
+                        <>Belum ada akun sosial di-link. Klik "Hubungkan via Ayrshare" untuk membuka halaman koneksi.</>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {ayr?.hasProfile ? (
+                <>
+                  <button onClick={startAyrConnect} disabled={ayrBusy} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">{ayrBusy ? 'Memproses…' : '🔗 Hubungkan / Tambah Akun'}</button>
+                  <button onClick={refreshAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-60">🔄 Refresh</button>
+                  <button onClick={disconnectAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60">✂️ Reset Profile</button>
+                </>
+              ) : ayr?.configured ? (
+                <button onClick={startAyrConnect} disabled={ayrBusy} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">{ayrBusy ? 'Memproses…' : '🚀 Hubungkan via Ayrshare'}</button>
+              ) : null}
+            </div>
+            {ayr?.activeSocialAccounts?.length > 0 && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Akun Sosial via Ayrshare</div>
+                <div className="flex flex-wrap gap-2">{ayr.activeSocialAccounts.map((s,i)=>(
+                  <span key={s} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{s}{ayr.displayNames?.[i] ? ` — ${ayr.displayNames[i]}` : ''}
+                  </span>
+                ))}</div>
+              </div>
+            )}
+            <div className="mt-3 text-[11px] text-slate-500">
+              💡 Ayrshare menyatukan Instagram, Facebook, YouTube & TikTok dalam satu API. Ideal untuk kondisi dimana OAuth manual sulit disiapkan.
+            </div>
           </Card>
         </div>
       )}

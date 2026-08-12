@@ -4,6 +4,7 @@ import { connections, users, db } from '@/lib/db'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
+import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -66,6 +67,10 @@ export async function GET(request, { params }) {
     if (path === 'live/tiktok/summary') return liveTiktok(request)
     if (path === 'live/ga4/summary') return liveGa4(request)
 
+    if (path === 'ayrshare/status') return ayrStatus()
+    if (path === 'ayrshare/analytics') return ayrAnalytics(request)
+    if (path === 'ayrshare/refresh') return ayrRefresh()
+
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('GET error', path, e)
@@ -84,6 +89,8 @@ export async function POST(request, { params }) {
     if (path === 'auth/forgot-password') return forgotPassword(request)
     if (path === 'auth/reset-password') return resetPassword(request)
     if (path === 'impact-stats') return saveImpactStats(request)
+    if (path === 'ayrshare/link') return ayrLink(request)
+    if (path === 'ayrshare/post') return ayrPost(request)
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('POST error', path, e)
@@ -99,6 +106,14 @@ export async function DELETE(request, { params }) {
       const provider = path.split('/')[1]
       const col = await connections()
       await col.deleteMany({ provider })
+      return NextResponse.json({ ok: true })
+    }
+    if (path === 'ayrshare/profile') {
+      const stored = await getStoredProfile()
+      if (stored?.profileKey) {
+        try { await deleteProfile(stored.profileKey) } catch {}
+      }
+      await deleteStoredProfile()
       return NextResponse.json({ ok: true })
     }
     if (path.startsWith('users/')) {
@@ -573,4 +588,96 @@ ATURAN: Item singkat 1-2 kalimat, sebutkan angka data jika relevan. Bahasa Indon
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'internal error' }, { status: 500 })
   }
+}
+
+
+/* ============ AYRSHARE ============ */
+async function ayrStatus() {
+  if (!hasAyrshareCreds()) return NextResponse.json({ configured: false })
+  const stored = await getStoredProfile()
+  if (!stored?.profileKey) return NextResponse.json({ configured: true, hasProfile: false })
+  // Ambil status akun sosial yang sudah terhubung dari Ayrshare
+  const { ok, data } = await getUser(stored.profileKey)
+  if (!ok) return NextResponse.json({ configured: true, hasProfile: true, profile: { title: stored.title, refId: stored.refId }, error: data?.message || 'Gagal fetch user' })
+  return NextResponse.json({
+    configured: true,
+    hasProfile: true,
+    profile: { title: stored.title, refId: stored.refId, createdAt: stored.created_at },
+    activeSocialAccounts: data?.activeSocialAccounts || [],
+    displayNames: data?.displayNames || [],
+    monthlyPostCount: data?.monthlyPostCount,
+    monthlyPostQuota: data?.monthlyPostQuota,
+  })
+}
+
+async function ayrLink(request) {
+  if (!hasAyrshareCreds()) return NextResponse.json({ error: 'Kredensial Ayrshare belum dikonfigurasi' }, { status: 400 })
+  const body = await request.json().catch(()=>({}))
+  const platforms = body.platforms || ['facebook','instagram','youtube','tiktok']
+
+  // Pastikan ada profile — jika belum, buat baru
+  let stored = await getStoredProfile()
+  if (!stored?.profileKey) {
+    const title = body.title || `Direktorat Kursus & Pelatihan ${new Date().getFullYear()}`
+    const created = await createProfile(title)
+    if (!created.ok) {
+      return NextResponse.json({ error: 'Gagal membuat Ayrshare profile', detail: created.data }, { status: 502 })
+    }
+    stored = await upsertStoredProfile('default', {
+      title: created.data?.title || title,
+      refId: created.data?.refId,
+      profileKey: created.data?.profileKey,
+    })
+  }
+
+  // Generate JWT URL
+  const redirect = (process.env.NEXT_PUBLIC_BASE_URL || '') + '/?ayrshare=done'
+  const jwt = await generateJWT({
+    profileKey: stored.profileKey,
+    redirect,
+    allowedSocial: platforms,
+    verify: false,
+  })
+  if (!jwt.ok) {
+    return NextResponse.json({ error: 'Gagal generate JWT', detail: jwt.data }, { status: 502 })
+  }
+  return NextResponse.json({
+    ok: true,
+    url: jwt.data?.url,
+    title: stored.title,
+    profileKey: undefined, // never leak client-side
+  })
+}
+
+async function ayrRefresh() {
+  const stored = await getStoredProfile()
+  if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 404 })
+  const { ok, data } = await getUser(stored.profileKey)
+  if (!ok) return NextResponse.json({ error: 'Gagal fetch', detail: data }, { status: 502 })
+  await upsertStoredProfile('default', {
+    title: stored.title, refId: stored.refId, profileKey: stored.profileKey,
+    lastUser: data, last_synced_at: new Date(),
+  })
+  return NextResponse.json({ ok: true, user: data })
+}
+
+async function ayrAnalytics(request) {
+  const stored = await getStoredProfile()
+  if (!stored?.profileKey) return NextResponse.json({ connected: false, error: 'Profile belum dibuat' })
+  const url = new URL(request.url)
+  const platformsParam = url.searchParams.get('platforms')
+  const platforms = platformsParam ? platformsParam.split(',') : ['facebook','instagram','youtube','tiktok']
+  const { ok, data } = await socialAnalytics(stored.profileKey, platforms)
+  if (!ok) return NextResponse.json({ connected: true, platforms, error: data?.message || 'Gagal', detail: data }, { status: 200 })
+  return NextResponse.json({ connected: true, platforms, data })
+}
+
+async function ayrPost(request) {
+  const stored = await getStoredProfile()
+  if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 400 })
+  const body = await request.json().catch(()=>({}))
+  if (!body.post) return NextResponse.json({ error: 'post (caption) wajib diisi' }, { status: 400 })
+  if (!body.platforms || !body.platforms.length) return NextResponse.json({ error: 'platforms wajib' }, { status: 400 })
+  const { ok, data, status } = await createPost(stored.profileKey, body)
+  return NextResponse.json({ ok, data }, { status: ok ? 200 : status })
 }
