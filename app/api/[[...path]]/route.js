@@ -4,7 +4,7 @@ import { connections, users, db } from '@/lib/db'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
-import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
+import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, history, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
 import { hasSmtp, sendMail, otpEmail } from '@/lib/mailer'
 import { logActivity, reqContext, listActivity, activitySummary } from '@/lib/activity'
 
@@ -72,6 +72,7 @@ export async function GET(request, { params }) {
     if (path === 'ayrshare/status') return ayrStatus()
     if (path === 'ayrshare/analytics') return ayrAnalytics(request)
     if (path === 'ayrshare/refresh') return ayrRefresh()
+    if (path === 'ayrshare/history') return ayrHistory(request)
     if (path === 'activity-logs') return getActivityLogs(request)
     if (path === 'activity-summary') return getActivitySummary()
 
@@ -722,6 +723,72 @@ async function ayrAnalytics(request) {
   const { ok, data } = await socialAnalytics(stored.profileKey, platforms)
   if (!ok) return NextResponse.json({ connected: true, platforms, error: data?.message || 'Gagal', detail: data }, { status: 200 })
   return NextResponse.json({ connected: true, platforms, data })
+}
+
+/**
+ * ayrHistory: fetch published posts via /history and aggregate per-day metrics
+ * per platform to build a daily time-series usable by the area charts.
+ * Query params: platform=instagram|facebook|youtube|tiktok, days=30
+ */
+async function ayrHistory(request) {
+  const stored = await getStoredProfile()
+  if (!stored?.profileKey) return NextResponse.json({ connected: false, error: 'Profile belum dibuat' })
+  const url = new URL(request.url)
+  const platform = (url.searchParams.get('platform') || '').toLowerCase() || null
+  const days = Math.max(1, Math.min(365, +(url.searchParams.get('days') || 30)))
+  const { ok, data } = await history(stored.profileKey, { lastDays: days, lastRecords: 500 })
+  if (!ok) return NextResponse.json({ connected: true, error: data?.message || 'Gagal', detail: data }, { status: 200 })
+
+  // Ayrshare returns { posts: [...] } typically. Support both shapes.
+  const posts = Array.isArray(data) ? data : (data?.posts || data?.history || [])
+  // Build days axis
+  const today = new Date(); today.setUTCHours(0,0,0,0)
+  const axis = []
+  for (let i = days-1; i >= 0; i--) {
+    const d = new Date(today); d.setUTCDate(d.getUTCDate() - i)
+    axis.push(d.toISOString().slice(0,10))
+  }
+  const zero = () => Object.fromEntries(axis.map(d => [d, { date:d, posts:0, likes:0, comments:0, shares:0, views:0, reach:0, impressions:0, engagement:0 }]))
+  const per = { instagram: zero(), facebook: zero(), youtube: zero(), tiktok: zero() }
+  for (const p of posts) {
+    const created = p.created || p.publishedAt || p.scheduleDate || p.date
+    if (!created) continue
+    const d = new Date(created).toISOString().slice(0,10)
+    // Ayrshare returns postIds keyed by platform; metrics under `analytics` per platform
+    const analytics = p.postIds ? {} : (p.analytics || {})
+    // Newer shape: p.postIds is array of { platform, id, analytics }
+    const pi = Array.isArray(p.postIds) ? p.postIds : (p.postIds && typeof p.postIds === 'object' ? Object.entries(p.postIds).map(([k,v]) => ({ platform:k, ...(v||{}) })) : [])
+    for (const item of pi) {
+      const plat = String(item.platform || '').toLowerCase()
+      if (!per[plat] || !per[plat][d]) continue
+      const a = item.analytics || item
+      const bucket = per[plat][d]
+      bucket.posts += 1
+      bucket.likes += +(a.likeCount || a.likes || 0)
+      bucket.comments += +(a.commentsCount || a.comments || 0)
+      bucket.shares += +(a.shareCount || a.shares || 0)
+      bucket.views += +(a.viewCount || a.videoViews || a.views || 0)
+      bucket.reach += +(a.reach || 0)
+      bucket.impressions += +(a.impressions || 0)
+      bucket.engagement += +(a.engagement || (a.likeCount||0)+(a.commentsCount||0)+(a.shareCount||0))
+    }
+    // Fallback for simpler shape: platform + analytics on the post itself
+    if (!pi.length && p.platform && per[p.platform.toLowerCase()]) {
+      const bucket = per[p.platform.toLowerCase()][d]
+      bucket.posts += 1
+      const a = p.analytics || {}
+      bucket.likes += +(a.likeCount||a.likes||0)
+      bucket.comments += +(a.commentsCount||a.comments||0)
+      bucket.shares += +(a.shareCount||a.shares||0)
+      bucket.views += +(a.viewCount||a.views||0)
+      bucket.engagement += +(a.engagement||0)
+    }
+  }
+  // If a specific platform was requested, return just that array
+  if (platform && per[platform]) {
+    return NextResponse.json({ connected:true, platform, days, series: axis.map(d => per[platform][d]), rawCount: posts.length })
+  }
+  return NextResponse.json({ connected:true, days, series: Object.fromEntries(Object.entries(per).map(([k,v]) => [k, axis.map(d=>v[d])])), rawCount: posts.length })
 }
 
 async function ayrPost(request) {

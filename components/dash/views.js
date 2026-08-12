@@ -183,8 +183,9 @@ export function PlatformDetailView({ platformKey, days }) {
   // Try to fetch live data — first from OAuth endpoints, then fallback to Ayrshare
   const [live, setLive] = useState(null)
   const [liveSource, setLiveSource] = useState(null) // 'oauth' | 'ayrshare'
+  const [dailyLive, setDailyLive] = useState(null) // Ayrshare per-day series
   useEffect(() => {
-    setLive(null); setLiveSource(null)
+    setLive(null); setLiveSource(null); setDailyLive(null)
     let cancelled = false
     async function loadLive() {
       const oauthEndpoint = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary', tiktok:'/api/live/tiktok/summary' }[platformKey]
@@ -195,7 +196,7 @@ export function PlatformDetailView({ platformKey, days }) {
           if (!cancelled && j.connected && !j.error) { setLive(j); setLiveSource('oauth'); return }
         } catch {}
       }
-      // 2) Fallback to Ayrshare
+      // 2) Fallback to Ayrshare aggregate + history for daily
       try {
         const j = await fetch(`/api/ayrshare/analytics?platforms=${platformKey}`).then(r=>r.json())
         if (cancelled) return
@@ -225,6 +226,14 @@ export function PlatformDetailView({ platformKey, days }) {
             })
             setLiveSource('ayrshare')
           }
+        }
+      } catch {}
+      // 3) Also try daily history (independent of aggregate result)
+      try {
+        const h = await fetch(`/api/ayrshare/history?platform=${platformKey}&days=${days}`).then(r=>r.json())
+        if (cancelled) return
+        if (h.connected && Array.isArray(h.series) && h.series.length && h.rawCount > 0) {
+          setDailyLive(h.series)
         }
       } catch {}
     }
@@ -299,6 +308,14 @@ export function PlatformDetailView({ platformKey, days }) {
     kpis = kpis.map(k => (overrideMap[k.label] != null && overrideMap[k.label] > 0) ? { ...k, value: overrideMap[k.label], isLive: true } : k)
   }
   const insights = generateInsights(cAgg, pAgg, { [platformKey]: cAgg })
+  // Merge daily live series with mock followers curve so all four charts have data
+  const chartData = dailyLive
+    ? dailyLive.map((d, i) => ({
+        ...d,
+        followers: curr[i]?.followers || 0,
+        contentPublished: d.posts,
+      }))
+    : curr
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
@@ -319,10 +336,11 @@ export function PlatformDetailView({ platformKey, days }) {
         }
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
+      {dailyLive && <div className="text-[11px] px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 inline-flex items-center gap-2 font-medium">📈 Grafik menggunakan data harian LIVE dari Ayrshare · {dailyLive.length} hari</div>}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card title="Reach & Engagement Trend" desc="Perkembangan harian">
+        <Card title={dailyLive ? "Reach & Engagement Trend (Live · Ayrshare)" : "Reach & Engagement Trend"} desc={dailyLive ? "Perkembangan harian dari post yang dipublikasikan via Ayrshare" : "Perkembangan harian (mock)"}>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={curr}>
+            <AreaChart data={chartData}>
               <defs><linearGradient id={`re-${platformKey}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={platform.color} stopOpacity={0.35} /><stop offset="100%" stopColor={platform.color} stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} />
               <Area type="monotone" name="Reach" dataKey="reach" stroke={platform.color} strokeWidth={2} fill={`url(#re-${platformKey})`} />
@@ -330,14 +348,14 @@ export function PlatformDetailView({ platformKey, days }) {
             </AreaChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Follower Growth" desc="Perkembangan pengikut">
+        <Card title="Follower Growth" desc={dailyLive ? "Estimasi (Ayrshare tidak mengembalikan history follower harian)" : "Perkembangan pengikut"}>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={curr}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>
+            <LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Posting Frequency" desc="Jumlah konten per hari">
+        <Card title={dailyLive ? "Posting Frequency (Live · Ayrshare)" : "Posting Frequency"} desc={dailyLive ? "Jumlah post nyata via Ayrshare" : "Jumlah konten per hari"}>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={curr}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
+            <BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
           </ResponsiveContainer>
         </Card>
         <Card title="Top Performing Content" desc="5 konten dengan skor tertinggi">
@@ -1338,6 +1356,10 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 <Field label="URL Media (opsional, harus HTTPS publik)">
                   <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} placeholder="https://.../gambar.jpg atau video.mp4" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
                 </Field>
+
+                {/* Preview panel */}
+                <ContentPreview caption={caption} mediaUrl={mediaUrl} platforms={pubPlatforms} />
+
                 <div>
                   <div className="text-xs font-medium text-slate-600 mb-1.5">Platform Tujuan</div>
                   <div className="flex flex-wrap gap-2">
@@ -1378,6 +1400,148 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
   )
 }
 function Field({ label, children }) { return <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">{label}</div>{children}</label> }
+
+/* =========== CONTENT PREVIEW (Instagram/Facebook/YouTube/TikTok mockups) =========== */
+function ContentPreview({ caption, mediaUrl, platforms }) {
+  const active = Object.keys(platforms||{}).filter(k => platforms[k])
+  if (!active.length && !caption && !mediaUrl) return null
+  const [tab, setTab] = useState(active[0] || 'instagram')
+  useEffect(() => { if (!platforms[tab] && active[0]) setTab(active[0]) }, [platforms])
+  const isVideo = mediaUrl && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(mediaUrl)
+
+  const PLATFORM_META = {
+    instagram: { name:'Instagram', color:'#E1306C', handle:'@ditbinsuslat', avatar:'DK' },
+    facebook:  { name:'Facebook',  color:'#1877F2', handle:'Direktorat Kursus dan Pelatihan', avatar:'DK' },
+    youtube:   { name:'YouTube',   color:'#FF0000', handle:'Direktorat Kursus & Pelatihan', avatar:'DK' },
+    tiktok:    { name:'TikTok',    color:'#111827', handle:'@ditbinsuslat', avatar:'DK' },
+  }
+  const tabs = active.length ? active : ['instagram']
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">👁 Preview Konten</div>
+        <div className="flex gap-1">
+          {tabs.map(k => {
+            const m = PLATFORM_META[k]
+            return <button key={k} type="button" onClick={()=>setTab(k)} className={`text-[10px] px-2 py-1 rounded-md font-medium transition ${tab===k?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`} style={tab===k?{background:m.color}:{}}>{m.name}</button>
+          })}
+        </div>
+      </div>
+
+      {tab === 'instagram' && <IGPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.instagram} />}
+      {tab === 'facebook' && <FBPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.facebook} />}
+      {tab === 'youtube' && <YTPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.youtube} />}
+      {tab === 'tiktok' && <TTPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.tiktok} />}
+
+      <div className="mt-2 text-[10px] text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
+        <span>Karakter: <strong className={(caption||'').length > 2200 ? 'text-red-600' : 'text-slate-700'}>{(caption||'').length}</strong>/2200</span>
+        <span>Hashtag: <strong className="text-slate-700">{(caption?.match(/#\w+/g)||[]).length}</strong></span>
+        <span>Mention: <strong className="text-slate-700">{(caption?.match(/@\w+/g)||[]).length}</strong></span>
+      </div>
+    </div>
+  )
+}
+
+function MediaBox({ mediaUrl, isVideo, aspect='square' }) {
+  const aspectClass = aspect === 'square' ? 'aspect-square' : aspect === 'wide' ? 'aspect-video' : 'aspect-[9/16]'
+  return (
+    <div className={`w-full ${aspectClass} bg-slate-100 rounded overflow-hidden flex items-center justify-center relative`}>
+      {mediaUrl ? (
+        isVideo
+          ? <video src={mediaUrl} controls className="w-full h-full object-cover" onError={(e)=>{e.target.style.display='none'}} />
+          : <img src={mediaUrl} alt="preview" className="w-full h-full object-cover" onError={(e)=>{e.target.style.display='none'; e.target.parentElement.innerHTML='<div class="text-slate-400 text-xs text-center px-4">🖼️ Gambar tidak dapat dimuat.<br/>Pastikan URL HTTPS publik yang valid.</div>'}} />
+      ) : (
+        <div className="text-slate-400 text-xs text-center px-4">📷 Tambahkan URL media untuk preview<br/><span className="text-[10px]">Tanpa media = post teks saja</span></div>
+      )}
+    </div>
+  )
+}
+
+function IGPreview({ caption, mediaUrl, isVideo, meta }) {
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-sm">
+      <div className="flex items-center gap-2 p-2 border-b border-slate-100">
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-600 p-0.5"><div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[9px] font-bold text-slate-700">{meta.avatar}</div></div>
+        <div className="flex-1"><div className="font-semibold text-slate-900 text-xs">{meta.handle.replace('@','')}</div><div className="text-[9px] text-slate-500">Jakarta, Indonesia · Sponsored</div></div>
+        <div className="text-slate-500">···</div>
+      </div>
+      <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="square" />
+      <div className="p-2 space-y-1">
+        <div className="flex gap-3 text-slate-700 text-base">♡ ⊙ ✈ <span className="ml-auto">☰</span></div>
+        <div className="text-[10px] text-slate-500">Disukai <strong className="text-slate-900">{Math.floor(Math.random()*500+120)}</strong> orang</div>
+        <div className="text-[11px] text-slate-800 leading-snug"><strong>{meta.handle.replace('@','')}</strong> <FormattedCaption text={caption} max={220} /></div>
+      </div>
+    </div>
+  )
+}
+
+function FBPreview({ caption, mediaUrl, isVideo, meta }) {
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
+      <div className="flex items-center gap-2 p-2.5">
+        <div className="w-9 h-9 rounded-full bg-[#1877F2] flex items-center justify-center text-white text-[10px] font-bold">{meta.avatar}</div>
+        <div className="flex-1"><div className="font-semibold text-slate-900 text-[13px] leading-tight">{meta.handle}</div><div className="text-[10px] text-slate-500 flex items-center gap-1">Barusan · 🌍</div></div>
+        <div className="text-slate-500 text-lg">···</div>
+      </div>
+      <div className="px-2.5 pb-2 text-[12px] text-slate-800 leading-snug whitespace-pre-wrap"><FormattedCaption text={caption} max={400} /></div>
+      {mediaUrl && <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="wide" />}
+      <div className="flex items-center justify-around border-t border-slate-100 py-1.5 text-[11px] text-slate-600 font-medium">
+        <span>👍 Suka</span><span>💬 Komentar</span><span>↗ Bagikan</span>
+      </div>
+    </div>
+  )
+}
+
+function YTPreview({ caption, mediaUrl, isVideo, meta }) {
+  const title = (caption||'').split('\n')[0] || 'Judul Video'
+  const description = (caption||'').split('\n').slice(1).join('\n')
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
+      <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="wide" />
+      <div className="p-2.5">
+        <div className="font-semibold text-slate-900 text-[13px] leading-tight line-clamp-2">{title}</div>
+        <div className="flex items-center gap-2 mt-2">
+          <div className="w-8 h-8 rounded-full bg-[#FF0000] flex items-center justify-center text-white text-[10px] font-bold">{meta.avatar}</div>
+          <div className="flex-1 min-w-0"><div className="text-[11px] font-medium text-slate-800">{meta.handle}</div><div className="text-[10px] text-slate-500">120 sub · Baru saja</div></div>
+          <button className="text-[10px] px-3 py-1 rounded-full bg-red-600 text-white font-semibold">Subscribe</button>
+        </div>
+        {description && <div className="mt-2 text-[10px] text-slate-600 leading-snug line-clamp-3 whitespace-pre-wrap"><FormattedCaption text={description} max={200} /></div>}
+      </div>
+    </div>
+  )
+}
+
+function TTPreview({ caption, mediaUrl, isVideo, meta }) {
+  return (
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-black text-white text-xs mx-auto max-w-[240px] relative" style={{ aspectRatio:'9/16' }}>
+      <div className="absolute inset-0"><MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="tall" /></div>
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70"></div>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 text-white z-10">
+        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold border-2 border-white">{meta.avatar}</div>
+        <div className="text-center text-[10px]">♡<div>0</div></div>
+        <div className="text-center text-[10px]">💬<div>0</div></div>
+        <div className="text-center text-[10px]">↗<div>0</div></div>
+      </div>
+      <div className="absolute left-2 right-14 bottom-2 z-10">
+        <div className="font-semibold text-[11px] mb-0.5">{meta.handle}</div>
+        <div className="text-[10px] leading-tight line-clamp-3"><FormattedCaption text={caption} max={120} light /></div>
+      </div>
+    </div>
+  )
+}
+
+function FormattedCaption({ text, max=200, light=false }) {
+  if (!text) return <span className={light?'opacity-70':'text-slate-400 italic'}>Belum ada caption…</span>
+  const truncated = text.length > max ? text.slice(0, max) + '…' : text
+  const parts = truncated.split(/(#\w+|@\w+|https?:\/\/\S+)/g)
+  return <>{parts.map((p,i)=> {
+    if (p.startsWith('#') || p.startsWith('@')) return <span key={i} className={light?'text-blue-200':'text-blue-600'}>{p}</span>
+    if (p.startsWith('http')) return <span key={i} className={light?'text-blue-200 underline':'text-blue-600 underline'}>{p}</span>
+    return <span key={i}>{p}</span>
+  })}</>
+}
+
 
 /* =========== COMPARE PERIODE =========== */
 export function ComparePeriodView({ days }) {
@@ -1732,6 +1896,37 @@ function ActivityLogsTab() {
     return `${Math.floor(sec/86400)}h lalu`
   }
 
+  function csvEscape(v) {
+    if (v == null) return ''
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v)
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+    return s
+  }
+  function exportCSV(rows) {
+    const headers = ['waktu','tanggal_iso','aksi','aktor','target','status','ip','meta']
+    const lines = [headers.join(',')]
+    for (const l of rows) {
+      lines.push([
+        new Date(l.ts).toLocaleString('id-ID'),
+        new Date(l.ts).toISOString(),
+        l.action,
+        l.actor,
+        l.target || '',
+        l.status,
+        l.ip || '',
+        l.meta ? JSON.stringify(l.meta) : '',
+      ].map(csvEscape).join(','))
+    }
+    // Prepend BOM so Excel Indonesia (comma delimiter) opens UTF-8 correctly
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type:'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `log-aktivitas-${new Date().toISOString().slice(0,10)}.csv`
+    document.body.appendChild(a); a.click(); a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1765,7 +1960,8 @@ function ActivityLogsTab() {
           <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">Filter Aktor (email)</div>
             <input value={filterActor} onChange={e=>setFilterActor(e.target.value)} placeholder="cth: annisa.permatasari@…" className="px-3 py-2 rounded-lg border border-slate-200 text-sm min-w-[260px]" />
           </label>
-          <button onClick={load} className="ml-auto text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Refresh</button>
+          <button onClick={()=>exportCSV(logs)} disabled={!logs.length} className="ml-auto text-xs px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 font-medium">📥 Ekspor CSV</button>
+          <button onClick={load} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Refresh</button>
         </div>
 
         <div className="overflow-x-auto -mx-2">
