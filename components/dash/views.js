@@ -754,7 +754,7 @@ export function SettingsView() {
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
   const accountsRows = [
@@ -940,6 +940,7 @@ export function SettingsView() {
       {tab==='users' && <UsersRolesTab roles={roles} />}
       {tab==='stats' && <ImpactStatsTab />}
       {tab==='activity' && <ActivityLogsTab />}
+      {tab==='digest' && <WeeklyDigestTab />}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
       {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
@@ -2005,6 +2006,148 @@ function ActivityLogsTab() {
 
 
 /* =========== IMPACT STATS TAB =========== */
+
+/* =========== WEEKLY DIGEST TAB =========== */
+function WeeklyDigestTab() {
+  const [state, setState] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [busy, setBusy] = useState(null) // 'preview' | 'send' | 'save'
+  const [flash, setFlash] = useState(null)
+  const [customEmails, setCustomEmails] = useState('')
+
+  const load = async () => {
+    try {
+      const s = await fetch('/api/digest/weekly/status').then(r=>r.json())
+      setState(s)
+      setCustomEmails((s.custom_recipients||[]).join('\n'))
+    } catch {}
+  }
+  useEffect(() => { load() }, [])
+
+  async function doPreview() {
+    setBusy('preview'); setFlash(null)
+    try {
+      const r = await fetch('/api/digest/weekly/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(r=>r.json())
+      setPreview(r); setShowPreview(true)
+    } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
+    setBusy(null)
+  }
+  async function doSend() {
+    if (!confirm('Kirim ringkasan mingguan sekarang ke semua penerima?')) return
+    setBusy('send'); setFlash(null)
+    try {
+      const r = await fetch('/api/digest/weekly/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(r=>r.json())
+      setFlash({ ok: r.ok, message: r.ok ? `Berhasil dikirim ke ${r.results?.filter(x=>x.ok).length}/${r.recipients?.length} penerima` : (r.error || 'Gagal') })
+      await load()
+    } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
+    setBusy(null)
+  }
+  async function saveSettings() {
+    setBusy('save'); setFlash(null)
+    try {
+      const patch = {
+        enabled: state.enabled,
+        hour_wib: state.hour_wib,
+        recipients_mode: state.recipients_mode,
+        custom_recipients: customEmails.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean),
+      }
+      const r = await fetch('/api/digest/weekly/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) }).then(r=>r.json())
+      if (r.ok) { setFlash({ ok:true, message:'Pengaturan tersimpan' }); await load() }
+      else setFlash({ ok:false, message: r.error || 'Gagal simpan' })
+    } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
+    setBusy(null)
+  }
+
+  if (!state) return <div className="text-sm text-slate-500">Memuat…</div>
+
+  return (
+    <div className="space-y-4">
+      <Card title="Notifikasi Ringkasan Mingguan" desc="Email otomatis setiap Senin pagi berisi ringkasan performa media sosial 7 hari terakhir">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={state.enabled} onChange={e=>setState(s=>({...s, enabled:e.target.checked}))} className="w-4 h-4 rounded accent-blue-600" />
+              <span className="text-sm font-medium text-slate-800">Aktifkan pengiriman otomatis Senin pagi</span>
+            </label>
+            <div>
+              <div className="text-xs font-medium text-slate-600 mb-1">Jam Pengiriman (WIB)</div>
+              <select value={state.hour_wib} onChange={e=>setState(s=>({...s, hour_wib:+e.target.value}))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                {[6,7,8,9,10].map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00 WIB</option>)}
+              </select>
+              <div className="text-[11px] text-slate-500 mt-1">💡 Pengiriman otomatis berjalan setiap Senin jam ini (window ±2 jam untuk toleransi scheduler)</div>
+            </div>
+            <div>
+              <div className="text-xs font-medium text-slate-600 mb-1">Penerima</div>
+              <div className="flex gap-3">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="rmode" checked={state.recipients_mode==='admins'} onChange={()=>setState(s=>({...s, recipients_mode:'admins'}))} className="accent-blue-600" />
+                  <span className="text-sm text-slate-700">Semua Admin aktif</span>
+                </label>
+                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="rmode" checked={state.recipients_mode==='custom'} onChange={()=>setState(s=>({...s, recipients_mode:'custom'}))} className="accent-blue-600" />
+                  <span className="text-sm text-slate-700">Daftar khusus</span>
+                </label>
+              </div>
+              {state.recipients_mode === 'custom' && (
+                <textarea value={customEmails} onChange={e=>setCustomEmails(e.target.value)} rows={3} placeholder="satu email per baris" className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none font-mono" />
+              )}
+            </div>
+            <button onClick={saveSettings} disabled={busy==='save'} className="text-sm px-4 py-2 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-50 font-medium">{busy==='save'?'Menyimpan…':'💾 Simpan Pengaturan'}</button>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Status Pengiriman Terakhir</div>
+              {state.last_sent_at ? (
+                <>
+                  <div className="text-sm font-semibold text-slate-900">{new Date(state.last_sent_at).toLocaleString('id-ID',{dateStyle:'full',timeStyle:'short'})}</div>
+                  <div className="text-xs text-slate-600 mt-1">Terkirim ke {state.last_sent_success}/{state.last_sent_total} penerima</div>
+                  {state.last_sent_recipients?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {state.last_sent_recipients.slice(0,6).map(e => <span key={e} className="text-[10px] px-1.5 py-0.5 rounded bg-white ring-1 ring-slate-200 text-slate-700 font-mono">{e}</span>)}
+                      {state.last_sent_recipients.length > 6 && <span className="text-[10px] text-slate-500">+{state.last_sent_recipients.length-6} lainnya</span>}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-slate-500 italic">Belum pernah dikirim. Klik "Kirim Sekarang" atau tunggu Senin depan.</div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button onClick={doPreview} disabled={busy==='preview'} className="text-sm px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 disabled:opacity-50 font-medium">{busy==='preview'?'Memuat preview…':'👁 Lihat Preview Email'}</button>
+              <button onClick={doSend} disabled={busy==='send'} className="text-sm px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 text-white hover:opacity-90 disabled:opacity-50 font-medium">{busy==='send'?'Mengirim…':'📧 Kirim Sekarang ke Penerima'}</button>
+            </div>
+
+            {flash && <div className={`text-xs px-3 py-2 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-800 border border-emerald-200':'bg-red-50 text-red-800 border border-red-200'}`}>{flash.ok?'✅ ':'❌ '}{flash.message}</div>}
+          </div>
+        </div>
+      </Card>
+
+      {showPreview && preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={()=>setShowPreview(false)}>
+          <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900">Preview Email Ringkasan Mingguan</h3>
+                <div className="text-xs text-slate-500">{preview.subject} · akan dikirim ke <strong>{preview.recipients?.length}</strong> penerima</div>
+              </div>
+              <button onClick={()=>setShowPreview(false)} className="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-slate-100">
+              <iframe title="digest-preview" srcDoc={preview.html} className="w-full h-[70vh] bg-white rounded-lg shadow-inner border-0" />
+            </div>
+            <div className="p-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button onClick={()=>setShowPreview(false)} className="text-sm px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50">Tutup</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ImpactStatsTab() {
   const [stats, setStats] = useState([])
   const [updatedAt, setUpdatedAt] = useState(null)

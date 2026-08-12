@@ -7,6 +7,7 @@ import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tikt
 import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, history, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
 import { hasSmtp, sendMail, otpEmail } from '@/lib/mailer'
 import { logActivity, reqContext, listActivity, activitySummary } from '@/lib/activity'
+import { sendWeeklyDigest, getDigestState, setDigestState, shouldAutoSend } from '@/lib/digest'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -73,6 +74,7 @@ export async function GET(request, { params }) {
     if (path === 'ayrshare/analytics') return ayrAnalytics(request)
     if (path === 'ayrshare/refresh') return ayrRefresh()
     if (path === 'ayrshare/history') return ayrHistory(request)
+    if (path === 'digest/weekly/status') return digestStatus()
     if (path === 'activity-logs') return getActivityLogs(request)
     if (path === 'activity-summary') return getActivitySummary()
 
@@ -96,6 +98,9 @@ export async function POST(request, { params }) {
     if (path === 'impact-stats') return saveImpactStats(request)
     if (path === 'ayrshare/link') return ayrLink(request)
     if (path === 'ayrshare/post') return ayrPost(request)
+    if (path === 'digest/weekly/send') return digestSend(request)
+    if (path === 'digest/weekly/preview') return digestPreview(request)
+    if (path === 'digest/weekly/settings') return digestSaveSettings(request)
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
     console.error('POST error', path, e)
@@ -809,3 +814,73 @@ async function ayrPost(request) {
   })
   return NextResponse.json({ ok, data }, { status: ok ? 200 : status })
 }
+
+/* ============ WEEKLY DIGEST ============ */
+async function digestStatus() {
+  const state = await getDigestState()
+  return NextResponse.json({
+    enabled: state.enabled !== false,
+    hour_wib: state.hour_wib || 8,
+    recipients_mode: state.recipients_mode || 'admins',
+    custom_recipients: state.custom_recipients || [],
+    last_sent_at: state.last_sent_at || null,
+    last_sent_recipients: state.last_sent_recipients || [],
+    last_sent_success: state.last_sent_success || 0,
+    last_sent_total: state.last_sent_total || 0,
+  })
+}
+
+async function digestSend(request) {
+  const body = await request.json().catch(()=>({}))
+  const recipients = Array.isArray(body.recipients) && body.recipients.length ? body.recipients : null
+  const r = await sendWeeklyDigest({ recipients })
+  await logActivity({
+    action:'digest.weekly.send',
+    actor: request.headers.get('x-actor-email') || 'admin',
+    status: r.ok ? 'success' : 'failure',
+    meta: { recipients: r.recipients, success: r.results?.filter(x=>x.ok).length, total: r.recipients?.length, error: r.error },
+    ...reqContext(request),
+  })
+  return NextResponse.json(r, { status: r.ok ? 200 : 500 })
+}
+
+async function digestPreview(request) {
+  const body = await request.json().catch(()=>({}))
+  const recipients = Array.isArray(body.recipients) && body.recipients.length ? body.recipients : null
+  const r = await sendWeeklyDigest({ preview: true, recipients })
+  return NextResponse.json(r)
+}
+
+async function digestSaveSettings(request) {
+  const body = await request.json().catch(()=>({}))
+  const patch = {}
+  if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
+  if (Number.isFinite(+body.hour_wib)) patch.hour_wib = Math.min(23, Math.max(0, +body.hour_wib))
+  if (body.recipients_mode === 'admins' || body.recipients_mode === 'custom') patch.recipients_mode = body.recipients_mode
+  if (Array.isArray(body.custom_recipients)) patch.custom_recipients = body.custom_recipients.map(String).map(s=>s.trim().toLowerCase()).filter(e=>/@/.test(e))
+  const state = await setDigestState(patch)
+  await logActivity({ action:'digest.settings.update', actor: request.headers.get('x-actor-email') || 'admin', status:'success', meta: patch, ...reqContext(request) })
+  return NextResponse.json({ ok: true, state })
+}
+
+/* ============ IN-PROCESS WEEKLY DIGEST SCHEDULER ============ */
+// Runs a lightweight interval that fires every 20 minutes. On Monday morning
+// (WIB) within the configured hour window, it triggers the digest send. The
+// send helper enforces a 6-day cooldown so we send at most once per week.
+if (typeof globalThis !== 'undefined' && !globalThis.__DIGEST_SCHEDULER__) {
+  globalThis.__DIGEST_SCHEDULER__ = setInterval(async () => {
+    try {
+      const should = await shouldAutoSend()
+      if (should) {
+        console.log('[digest] Auto-triggering weekly digest at', new Date().toISOString())
+        const r = await sendWeeklyDigest({})
+        console.log('[digest] Auto-send result:', r.ok, 'recipients:', r.recipients?.length)
+        await logActivity({ action:'digest.weekly.send', actor: 'system', status: r.ok ? 'success' : 'failure', meta: { auto: true, recipients: r.recipients, error: r.error } })
+      }
+    } catch (e) {
+      console.warn('[digest] scheduler error:', e?.message)
+    }
+  }, 20 * 60 * 1000) // every 20 minutes
+  console.log('[digest] In-process scheduler initialized')
+}
+

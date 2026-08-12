@@ -544,6 +544,93 @@ backend:
           
           Password reset feature production-ready.
 
+  - task: "Weekly Digest Email Endpoints (GET /api/digest/weekly/status, POST /api/digest/weekly/preview, POST /api/digest/weekly/send, POST /api/digest/weekly/settings)"
+    implemented: true
+    working: true
+    file: "/app/app/api/[[...path]]/route.js, /app/lib/digest.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ALL TESTS PASSED (9/9) - Weekly Digest Email feature fully working
+          
+          Tested via /app/digest_test.py against http://localhost:3000/api
+          
+          ✅ Test 1: GET /api/digest/weekly/status (initial state)
+             • Returns 200 with all required fields: enabled, hour_wib, recipients_mode, custom_recipients, last_sent_at, last_sent_recipients, last_sent_success, last_sent_total
+             • Default values verified: enabled=true, hour_wib=8, recipients_mode='admins'
+          
+          ✅ Test 2: POST /api/digest/weekly/preview with body {}
+             • Returns 200 with ok=true, preview=true
+             • Subject starts with "📊 Ringkasan Mingguan Media Sosial" ✓
+             • HTML length: 9154 chars (> 5000 chars requirement) ✓
+             • Recipients: Admin emails array ['annisa.permatasari@dikdasmen.belajar.id', 'ditbinsuslat@gmail.com']
+             • data.platforms: 4 items (instagram, facebook, youtube, tiktok) ✓
+             • data.activity: { total7d: 13, publishSuccess: 0, loginFails: 2, topActions: 5 items } ✓
+             • NO email sent (preview mode confirmed) ✓
+          
+          ✅ Test 3: POST /api/digest/weekly/preview with custom recipients
+             • Returns 200 with recipients=['custom@test.com'] ✓
+             • Custom recipients override working correctly
+             • NO email sent (preview mode confirmed) ✓
+          
+          ✅ Test 4: POST /api/digest/weekly/send with real email
+             • Returns 200 with ok=true
+             • sent_at: timestamp present ✓
+             • recipients: ['ditbinsuslat@gmail.com'] ✓
+             • results: [{ to: 'ditbinsuslat@gmail.com', ok: true }] ✓
+             • subject: "📊 Ringkasan Mingguan Media Sosial · 05 Agu — 12 Agu 2026" ✓
+             • Real email sent via SMTP successfully ✓
+          
+          ✅ Test 5: Verify last_sent_at updated in status
+             • GET /api/digest/weekly/status after send
+             • last_sent_at: updated to latest timestamp ✓
+             • last_sent_recipients: ['ditbinsuslat@gmail.com'] ✓
+             • last_sent_success: 1 ✓
+             • last_sent_total: 1 ✓
+          
+          ✅ Test 6: POST /api/digest/weekly/settings with email validation
+             • Body: { enabled: false, hour_wib: 9, recipients_mode: 'custom', custom_recipients: ['test1@example.com', 'test2@example.com', 'bad-not-email', ''] }
+             • Returns 200 with ok=true
+             • state.enabled: false ✓
+             • state.hour_wib: 9 ✓
+             • state.recipients_mode: 'custom' ✓
+             • state.custom_recipients: ['test1@example.com', 'test2@example.com'] ✓
+             • Invalid emails filtered out (no @ or empty) ✓
+          
+          ✅ Test 7: POST /api/digest/weekly/settings - restore defaults
+             • Body: { enabled: true, hour_wib: 8, recipients_mode: 'admins', custom_recipients: [] }
+             • Returns 200 with all defaults restored ✓
+          
+          ✅ Test 8: Activity log verification
+             • GET /api/activity-logs?limit=20
+             • Found 2 successful 'digest.weekly.send' entries with status='success' ✓
+             • Found 2 successful 'digest.settings.update' entries with status='success' ✓
+             • Activity logging working correctly ✓
+          
+          ✅ Test 9: Regression checks
+             • GET /api/health → 200 ✓
+             • GET /api/ayrshare/status → 200 ✓
+             • POST /api/auth/login → 200 ✓
+             • GET /api/activity-summary → 200 ✓
+             • All existing endpoints still working ✓
+          
+          Key Features Verified:
+          • Email template: Professional HTML with platform snapshot table, activity metrics, top actions, tips section
+          • SMTP integration: Gmail SMTP working correctly (smtp.gmail.com:465)
+          • Email validation: Invalid emails (no @ or empty) filtered from custom_recipients
+          • Recipients resolution: 'admins' mode fetches all active Admin users from DB
+          • Preview mode: Returns email content without sending
+          • Send mode: Actually sends emails via SMTP and logs results
+          • Activity logging: All digest actions logged with proper status
+          • Settings persistence: State stored in MongoDB digest_state collection
+          • Auto-scheduler: In-process scheduler initialized (runs every 20 minutes, checks Monday morning WIB)
+          
+          No critical issues found. Weekly Digest Email feature is production-ready.
+
 frontend:
   - task: "Settings > Users & Roles tab with add/edit/delete users form"
     implemented: true
@@ -618,7 +705,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 4
+  test_sequence: 5
   run_ui: false
 
 test_plan:
@@ -888,3 +975,57 @@ agent_communication:
         - Each series item: { date, posts, likes, comments, shares, views, reach, impressions, engagement }
       
       No critical issues found. History endpoint is production-ready with proper error handling.
+
+  - agent: "testing"
+    message: |
+      ✅ WEEKLY DIGEST EMAIL ENDPOINTS TESTING COMPLETE - ALL TESTS PASSED (9/9)
+      
+      Created comprehensive test suite at /app/digest_test.py covering all 8 scenarios from review request.
+      
+      Test Results Summary:
+      
+      ✅ Test 1: GET /api/digest/weekly/status
+         • Returns 200 with all required fields
+         • Default values: enabled=true, hour_wib=8, recipients_mode='admins'
+      
+      ✅ Test 2: POST /api/digest/weekly/preview (default)
+         • Subject starts with "📊 Ringkasan Mingguan Media Sosial"
+         • HTML > 5000 chars (9154 chars)
+         • Recipients: Admin emails array
+         • data.platforms: 4 items (instagram/facebook/youtube/tiktok)
+         • data.activity: { total7d, publishSuccess, loginFails, topActions }
+         • NO email sent (preview mode)
+      
+      ✅ Test 3: POST /api/digest/weekly/preview (custom recipients)
+         • Custom recipients override working
+         • NO email sent (preview mode)
+      
+      ✅ Test 4: POST /api/digest/weekly/send
+         • Real email sent via SMTP to ditbinsuslat@gmail.com
+         • Returns: ok=true, sent_at, recipients, results, subject
+         • results: [{ to: 'ditbinsuslat@gmail.com', ok: true }]
+      
+      ✅ Test 5: Verify last_sent_at updated
+         • GET /api/digest/weekly/status shows updated last_sent_at
+         • last_sent_recipients contains test email
+         • last_sent_success=1, last_sent_total=1
+      
+      ✅ Test 6: POST /api/digest/weekly/settings (with validation)
+         • Invalid emails filtered (no @ or empty)
+         • Settings: enabled=false, hour_wib=9, recipients_mode='custom'
+         • custom_recipients: ['test1@example.com', 'test2@example.com']
+      
+      ✅ Test 7: Restore defaults
+         • Settings restored: enabled=true, hour_wib=8, recipients_mode='admins'
+      
+      ✅ Test 8: Activity logs verification
+         • Found 2 successful 'digest.weekly.send' entries
+         • Found 2 successful 'digest.settings.update' entries
+      
+      ✅ Test 9: Regression checks
+         • GET /api/health → 200
+         • GET /api/ayrshare/status → 200
+         • POST /api/auth/login → 200
+         • GET /api/activity-summary → 200
+      
+      All Weekly Digest endpoints working correctly. Feature is production-ready.
