@@ -1158,10 +1158,10 @@ export function ContentCalendarView() {
   const itemsOn = (d) => { if (!d) return []; const iso = d.toISOString().slice(0,10); return filtered.filter(it => it.date === iso) }
   const upcoming = filtered.filter(it => new Date(it.date) >= today && it.status !== 'Published').sort((a,b)=>a.date.localeCompare(b.date)).slice(0, 12)
 
-  function saveItem(payload) {
+  function saveItem(payload, keepOpen = false) {
     if (payload.id && items.find(i => i.id === payload.id)) persist(items.map(i => i.id === payload.id ? { ...i, ...payload } : i))
     else persist([...items, { ...payload, id: 'user-' + Date.now() }])
-    setModal(null)
+    if (!keepOpen) setModal(null)
   }
   function delItem(id) { persist(items.filter(i => i.id !== id)); setModal(null) }
 
@@ -1211,12 +1211,13 @@ export function ContentCalendarView() {
                   {inMonth && (<>
                     <div className={`text-xs font-semibold mb-1 ${isToday ? 'inline-flex w-6 h-6 rounded-full bg-blue-600 text-white items-center justify-center' : 'text-slate-500'}`}>{d.getDate()}</div>
                     <div className="space-y-1">
-                      {dayItems.slice(0,3).map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; return (
+                      {dayItems.slice(0,3).map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; const hasLinks = it.publishedUrls && Object.keys(it.publishedUrls).length > 0; return (
                         <div key={it.id} onClick={(e)=>{ e.stopPropagation(); setModal({ date: it.date, item: it }) }}
                           className={`text-[10px] px-1.5 py-0.5 rounded truncate flex items-center gap-1 ${st.bg} ${st.text} ring-1 ${st.ring}`}
-                          title={it.title}>
+                          title={it.title + (hasLinks ? '\n\n🔗 Link post: '+Object.values(it.publishedUrls).join(', ') : '')}>
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: colorOf(it.platform) }} />
                           <span className="truncate">{it.title}</span>
+                          {hasLinks && <span className="ml-auto text-[9px] shrink-0" title="Sudah dipublikasi — ada tautan post">🔗</span>}
                         </div>) })}
                       {dayItems.length > 3 && <div className="text-[10px] text-slate-500">+{dayItems.length-3} lainnya</div>}
                     </div>
@@ -1241,6 +1242,28 @@ export function ContentCalendarView() {
               )})}
             </div>
           </Card>
+          {(() => {
+            const publishedWithLinks = filtered.filter(i => i.publishedUrls && Object.keys(i.publishedUrls).length > 0).sort((a,b)=> new Date(b.publishedAt||b.date) - new Date(a.publishedAt||a.date)).slice(0, 6)
+            if (!publishedWithLinks.length) return null
+            return (
+              <Card title="🔗 Konten Terbaru Dipublikasi" desc="Klik untuk verifikasi ke platform">
+                <div className="space-y-2.5 max-h-[420px] overflow-y-auto">
+                  {publishedWithLinks.map(it => (
+                    <div key={it.id} className="p-2.5 rounded-lg border border-emerald-100 bg-emerald-50/40">
+                      <div onClick={()=>setModal({ date: it.date, item: it })} className="cursor-pointer">
+                        <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">✓ Published</span></div>
+                        <div className="text-xs font-medium text-slate-800 line-clamp-2">{it.title}</div>
+                        {it.publishedAt && <div className="text-[10px] text-slate-500 mt-0.5">{new Date(it.publishedAt).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'})}</div>}
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {Object.entries(it.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )
+          })()}
         </div>
       </div>
 
@@ -1290,9 +1313,22 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
       const r = await fetch('/api/ayrshare/post', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
       const j = await r.json()
       if (r.ok && j.ok) {
-        setPublishResult({ ok:true, message: scheduled ? `Berhasil dijadwalkan untuk ${new Date(body.scheduleDate).toLocaleString('id-ID')}` : 'Berhasil dipublikasikan!', data: j.data })
-        // Update item status
-        onSave({ ...form, status: scheduled ? 'Scheduled' : 'Published', ayrsharePostId: j.data?.id })
+        // Extract per-platform postUrls from Ayrshare response
+        const postIds = j.data?.postIds || []
+        const publishedUrls = {}
+        for (const it of postIds) {
+          const plat = String(it.platform || '').toLowerCase()
+          if (plat && it.postUrl) publishedUrls[plat] = it.postUrl
+        }
+        setPublishResult({
+          ok: true,
+          message: scheduled ? `Berhasil dijadwalkan untuk ${new Date(body.scheduleDate).toLocaleString('id-ID')}` : 'Berhasil dipublikasikan!',
+          data: j.data,
+          publishedUrls,
+          scheduled,
+        })
+        // Update item status + save publishedUrls (keep modal open so user sees links)
+        onSave({ ...form, status: scheduled ? 'Scheduled' : 'Published', ayrsharePostId: j.data?.id, publishedUrls: Object.keys(publishedUrls).length ? publishedUrls : undefined, publishedAt: scheduled ? undefined : new Date().toISOString() }, true)
       } else {
         const msg = j?.data?.message || j?.error || 'Gagal publish'
         setPublishResult({ ok:false, message: msg, detail: j?.data })
@@ -1380,7 +1416,28 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 </div>
                 {publishResult && (
                   <div className={`text-xs px-2.5 py-2 rounded ${publishResult.ok?'bg-emerald-50 text-emerald-800 border border-emerald-200':'bg-red-50 text-red-800 border border-red-200'}`}>
-                    {publishResult.ok?'✅ ':'❌ '}{publishResult.message}
+                    <div>{publishResult.ok?'✅ ':'❌ '}{publishResult.message}</div>
+                    {publishResult.ok && publishResult.publishedUrls && Object.keys(publishResult.publishedUrls).length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-emerald-200">
+                        <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">🔗 Tautan ke Post Asli</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(publishResult.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
+                        </div>
+                      </div>
+                    )}
+                    {publishResult.ok && publishResult.scheduled && (!publishResult.publishedUrls || !Object.keys(publishResult.publishedUrls).length) && (
+                      <div className="mt-1.5 text-[11px] text-emerald-700">💡 Tautan post akan tersedia setelah post benar-benar dipublikasi oleh platform.</div>
+                    )}
+                  </div>
+                )}
+                {/* Show existing publishedUrls if item was previously published */}
+                {!publishResult && it?.publishedUrls && Object.keys(it.publishedUrls).length > 0 && (
+                  <div className="text-xs px-2.5 py-2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">🔗 Tautan Post yang Sudah Dipublikasi</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(it.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
+                    </div>
+                    {it.publishedAt && <div className="mt-1.5 text-[10px] text-emerald-700">Dipublikasi: {new Date(it.publishedAt).toLocaleString('id-ID')}</div>}
                   </div>
                 )}
                 <div className="flex gap-2 pt-1">
@@ -1401,6 +1458,27 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
   )
 }
 function Field({ label, children }) { return <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">{label}</div>{children}</label> }
+
+/* =========== POST LINK BADGE (opens actual social post in new tab) =========== */
+function PostLinkBadge({ platform, url }) {
+  const META = {
+    instagram: { name:'Instagram', bg:'linear-gradient(135deg,#F58529,#DD2A7B,#8134AF)', color:'#fff', icon:'📷' },
+    facebook:  { name:'Facebook',  bg:'#1877F2', color:'#fff', icon:'👍' },
+    youtube:   { name:'YouTube',   bg:'#FF0000', color:'#fff', icon:'▶' },
+    tiktok:    { name:'TikTok',    bg:'#111827', color:'#fff', icon:'♪' },
+    twitter:   { name:'X/Twitter', bg:'#111', color:'#fff', icon:'𝕏' },
+    linkedin:  { name:'LinkedIn',  bg:'#0A66C2', color:'#fff', icon:'in' },
+  }
+  const m = META[platform.toLowerCase()] || { name: platform, bg:'#475569', color:'#fff', icon:'🔗' }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title={url} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold hover:opacity-90 transition" style={{ background:m.bg, color:m.color }}>
+      <span>{m.icon}</span>
+      <span>{m.name}</span>
+      <span className="opacity-70">↗</span>
+    </a>
+  )
+}
+
 
 /* =========== CONTENT PREVIEW (Instagram/Facebook/YouTube/TikTok mockups) =========== */
 function ContentPreview({ caption, mediaUrl, platforms }) {
