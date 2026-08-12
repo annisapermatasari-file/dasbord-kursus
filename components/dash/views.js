@@ -180,13 +180,56 @@ export function PlatformDetailView({ platformKey, days }) {
   const top = [...contentItems].sort((a,b)=>b.score - a.score).slice(0, 5)
   const worst = [...contentItems].sort((a,b)=>a.score - b.score).slice(0, 3)
 
-  // Try to fetch live data
+  // Try to fetch live data — first from OAuth endpoints, then fallback to Ayrshare
   const [live, setLive] = useState(null)
+  const [liveSource, setLiveSource] = useState(null) // 'oauth' | 'ayrshare'
   useEffect(() => {
-    setLive(null)
-    const endpoint = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary' }[platformKey]
-    if (!endpoint) return
-    fetch(`${endpoint}?days=${days}`).then(r=>r.json()).then(j => { if (j.connected && !j.error) setLive(j) }).catch(()=>{})
+    setLive(null); setLiveSource(null)
+    let cancelled = false
+    async function loadLive() {
+      const oauthEndpoint = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary', tiktok:'/api/live/tiktok/summary' }[platformKey]
+      // 1) Try OAuth endpoint
+      if (oauthEndpoint) {
+        try {
+          const j = await fetch(`${oauthEndpoint}?days=${days}`).then(r=>r.json())
+          if (!cancelled && j.connected && !j.error) { setLive(j); setLiveSource('oauth'); return }
+        } catch {}
+      }
+      // 2) Fallback to Ayrshare
+      try {
+        const j = await fetch(`/api/ayrshare/analytics?platforms=${platformKey}`).then(r=>r.json())
+        if (cancelled) return
+        if (j.connected && j.data && !j.error) {
+          const platData = j.data[platformKey] || j.data[platformKey.toLowerCase()]
+          if (platData && !platData.error) {
+            const a = platData.analytics || platData
+            setLive({
+              connected: true,
+              account: { username: a.username || a.name },
+              channel: { title: a.title || a.channelTitle },
+              page: { name: a.pageName || a.name },
+              summary: {
+                followers: a.followersCount ?? a.subscriberCount ?? a.likes ?? a.followers ?? 0,
+                reach: a.reach ?? a.impressions ?? 0,
+                impressions: a.impressions ?? 0,
+                engagement: a.engagement ?? (a.likeCount||0)+(a.commentsCount||0),
+                likes: a.likeCount ?? a.likes ?? 0,
+                comments: a.commentsCount ?? a.comments ?? 0,
+                views: a.viewCount ?? a.videoViews ?? a.views ?? 0,
+                videos: a.mediaCount ?? a.videoCount ?? 0,
+                subscribers: a.subscriberCount ?? 0,
+                fansEnd: a.followersCount ?? 0,
+                totalViews: a.viewCount ?? 0,
+              },
+              ayrshareRaw: platData,
+            })
+            setLiveSource('ayrshare')
+          }
+        }
+      } catch {}
+    }
+    loadLive()
+    return () => { cancelled = true }
   }, [platformKey, days])
   const kpiMap = {
     instagram: [
@@ -243,7 +286,18 @@ export function PlatformDetailView({ platformKey, days }) {
   }
   const icons = { instagram: Instagram, facebook: Facebook, youtube: Youtube, tiktok: Music2 }
   const Icon = icons[platformKey] || Sparkles
-  const kpis = kpiMap[platformKey]
+  let kpis = kpiMap[platformKey]
+  // Override KPIs with LIVE numbers when available
+  if (live?.summary) {
+    const s = live.summary
+    const overrideMap = {
+      instagram: { 'Followers': s.followers, 'Reach': s.reach, 'Impressions': s.impressions, 'Likes': s.likes, 'Comments': s.comments },
+      facebook: { 'Page Followers': s.fansEnd || s.followers, 'Reach': s.reach, 'Impressions': s.impressions, 'Post Engagement': s.engagement, 'Likes': s.likes, 'Comments': s.comments, 'Video Views': s.views },
+      youtube: { 'Subscribers': s.subscribers || s.followers, 'Views': s.totalViews || s.views, 'Likes': s.likes, 'Comments': s.comments },
+      tiktok: { 'Followers': s.followers, 'Video Views': s.views, 'Likes': s.likes, 'Comments': s.comments },
+    }[platformKey] || {}
+    kpis = kpis.map(k => (overrideMap[k.label] != null && overrideMap[k.label] > 0) ? { ...k, value: overrideMap[k.label], isLive: true } : k)
+  }
   const insights = generateInsights(cAgg, pAgg, { [platformKey]: cAgg })
   return (
     <div className="space-y-6">
@@ -253,13 +307,14 @@ export function PlatformDetailView({ platformKey, days }) {
           <div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Akun {platform.name}</div>
           <div className="text-lg font-bold text-slate-900">{live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || platform.handle}</div>
           {live && <div className="text-xs text-slate-500 mt-0.5">
-            {platformKey==='instagram' && live.summary && `${formatNumber(live.account?.followers_count||0)} followers · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.impressions||0)} impressions (live ${days}d)`}
-            {platformKey==='facebook' && live.summary && `${formatNumber(live.summary.fansEnd||0)} fans · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.engagement||0)} engagement (live ${days}d)`}
-            {platformKey==='youtube' && live.summary && `${formatNumber(live.summary.subscribers||0)} subscribers · ${formatNumber(live.summary.totalViews||0)} total views · ${formatNumber(live.summary.videos||0)} videos`}
+            {platformKey==='instagram' && live.summary && `${formatNumber(live.account?.followers_count||live.summary.followers||0)} followers · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.impressions||0)} impressions${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
+            {platformKey==='facebook' && live.summary && `${formatNumber(live.summary.fansEnd||live.summary.followers||0)} fans · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.engagement||0)} engagement${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
+            {platformKey==='youtube' && live.summary && `${formatNumber(live.summary.subscribers||live.summary.followers||0)} subscribers · ${formatNumber(live.summary.totalViews||live.summary.views||0)} views${liveSource==='oauth'?'':' (live · Ayrshare)'}`}
+            {platformKey==='tiktok' && live.summary && `${formatNumber(live.summary.followers||0)} followers · ${formatNumber(live.summary.views||0)} video views · ${formatNumber(live.summary.likes||0)} likes${liveSource==='oauth'?'':' (live · Ayrshare)'}`}
           </div>}
         </div>
         {live
-          ? <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Live Data · Terhubung</span>
+          ? <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Live · {liveSource==='ayrshare'?'via Ayrshare':'OAuth Langsung'}</span>
           : <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 font-medium">🟡 Mock Data</span>
         }
       </div>
@@ -681,7 +736,7 @@ export function SettingsView() {
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
   const accountsRows = [
@@ -866,6 +921,7 @@ export function SettingsView() {
       {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">{d}</div></div></div>))}</div></Card>)}
       {tab==='users' && <UsersRolesTab roles={roles} />}
       {tab==='stats' && <ImpactStatsTab />}
+      {tab==='activity' && <ActivityLogsTab />}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
       {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
@@ -1184,15 +1240,57 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
   })
   const TYPES = { instagram:['Reels','Feed','Story','Carousel'], facebook:['Feed','Video','Story','Article'], youtube:['Video','Short'], tiktok:['Video'] }
   const TOPICS = ['Kursus Vokasi','Sertifikasi','LKP Unggulan','Kisah Alumni','Program Prioritas','Beasiswa','Pelatihan Kerja','Digital Skill','Kewirausahaan','Green Skill','Kolaborasi Industri','Info Publik']
+
+  // Publish state
+  const [showPublish, setShowPublish] = useState(false)
+  const [caption, setCaption] = useState(it?.title ? it.title + '\n\n#DirektoratKursusPelatihan #KemendikdasmenRI' : '')
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [pubPlatforms, setPubPlatforms] = useState({ facebook:true, instagram:true, youtube:false, tiktok:false })
+  const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState(null)
+  const [scheduleTime, setScheduleTime] = useState('09:00')
+  const [ayrStatus, setAyrStatus] = useState(null)
+  useEffect(() => {
+    if (showPublish && !ayrStatus) {
+      fetch('/api/ayrshare/status').then(r=>r.json()).then(setAyrStatus).catch(()=>{})
+    }
+  }, [showPublish, ayrStatus])
+
+  async function doPublish(scheduled) {
+    setPublishing(true); setPublishResult(null)
+    const selected = Object.keys(pubPlatforms).filter(k => pubPlatforms[k])
+    if (!selected.length) { setPublishResult({ ok:false, message:'Pilih minimal 1 platform' }); setPublishing(false); return }
+    if (!caption.trim()) { setPublishResult({ ok:false, message:'Caption wajib diisi' }); setPublishing(false); return }
+    const body = { post: caption, platforms: selected }
+    if (mediaUrl.trim()) body.mediaUrls = [mediaUrl.trim()]
+    if (scheduled) {
+      const iso = new Date(`${form.date}T${scheduleTime}:00`).toISOString()
+      body.scheduleDate = iso
+    }
+    try {
+      const r = await fetch('/api/ayrshare/post', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+      const j = await r.json()
+      if (r.ok && j.ok) {
+        setPublishResult({ ok:true, message: scheduled ? `Berhasil dijadwalkan untuk ${new Date(body.scheduleDate).toLocaleString('id-ID')}` : 'Berhasil dipublikasikan!', data: j.data })
+        // Update item status
+        onSave({ ...form, status: scheduled ? 'Scheduled' : 'Published', ayrsharePostId: j.data?.id })
+      } else {
+        const msg = j?.data?.message || j?.error || 'Gagal publish'
+        setPublishResult({ ok:false, message: msg, detail: j?.data })
+      }
+    } catch (e) { setPublishResult({ ok:false, message: String(e?.message||e) }) }
+    setPublishing(false)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[92vh] overflow-y-auto">
         <div className="p-5 border-b border-slate-100 flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-5 h-5" /></div>
           <div><h3 className="font-semibold text-slate-900">{it ? 'Edit Konten' : 'Konten Baru'}</h3><p className="text-xs text-slate-500">Rencanakan konten untuk kalender editorial</p></div>
         </div>
         <div className="p-5 space-y-3">
-          <Field label="Judul Konten"><input value={form.title} onChange={e=>setForm(f=>({...f, title:e.target.value}))} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
+          <Field label="Judul Konten"><input value={form.title} onChange={e=>{setForm(f=>({...f, title:e.target.value})); if(!caption) setCaption(e.target.value+'\n\n#DirektoratKursusPelatihan #KemendikdasmenRI')}} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tanggal"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f, date:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></Field>
             <Field label="Status">
@@ -1200,7 +1298,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 <option>Draft</option><option>Scheduled</option><option>Published</option>
               </select>
             </Field>
-            <Field label="Platform">
+            <Field label="Platform Utama">
               <select value={form.platform} onChange={e=>setForm(f=>({...f, platform:e.target.value, type: (TYPES[e.target.value]||[])[0]}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
                 {platforms.map(p=><option key={p.key} value={p.key}>{p.name}</option>)}
               </select>
@@ -1216,6 +1314,59 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
               {TOPICS.map(t=><option key={t}>{t}</option>)}
             </select>
           </Field>
+
+          {/* Publish via Ayrshare toggle */}
+          <div className="pt-2 border-t border-slate-100">
+            <button type="button" onClick={()=>setShowPublish(v=>!v)} className="w-full flex items-center gap-2 text-sm font-semibold text-indigo-700 hover:text-indigo-900">
+              <span className="text-lg">{showPublish?'▾':'▸'}</span>
+              🚀 Publish Multi-Platform via Ayrshare
+            </button>
+            {showPublish && (
+              <div className="mt-3 space-y-3 p-3 rounded-lg bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200">
+                {ayrStatus && !ayrStatus.hasProfile && (
+                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1.5 rounded">⚠️ Profile Ayrshare belum aktif. Buka Settings → API Connections → Hubungkan via Ayrshare.</div>
+                )}
+                {ayrStatus?.hasProfile && (!ayrStatus.activeSocialAccounts || !ayrStatus.activeSocialAccounts.length) && (
+                  <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1.5 rounded">⚠️ Belum ada akun sosial ter-link. Klik "Hubungkan / Tambah Akun" di Settings.</div>
+                )}
+                {ayrStatus?.activeSocialAccounts?.length > 0 && (
+                  <div className="text-[11px] text-slate-600">✅ Akun aktif: <strong>{ayrStatus.activeSocialAccounts.join(', ')}</strong></div>
+                )}
+                <Field label="Caption">
+                  <textarea value={caption} onChange={e=>setCaption(e.target.value)} rows={3} placeholder="Tulis caption menarik dengan hashtag…" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" />
+                </Field>
+                <Field label="URL Media (opsional, harus HTTPS publik)">
+                  <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} placeholder="https://.../gambar.jpg atau video.mp4" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                </Field>
+                <div>
+                  <div className="text-xs font-medium text-slate-600 mb-1.5">Platform Tujuan</div>
+                  <div className="flex flex-wrap gap-2">
+                    {[['facebook','Facebook','#1877F2'],['instagram','Instagram','#E1306C'],['youtube','YouTube','#FF0000'],['tiktok','TikTok','#111827']].map(([k,l,c])=>(
+                      <label key={k} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${pubPlatforms[k]?'bg-white border-indigo-400 ring-1 ring-indigo-200':'bg-slate-50 border-slate-200'}`}>
+                        <input type="checkbox" checked={pubPlatforms[k]} onChange={e=>setPubPlatforms(p=>({...p,[k]:e.target.checked}))} className="w-3.5 h-3.5" />
+                        <span style={{ color: pubPlatforms[k]?c:'#94A3B8', fontWeight:600 }}>{l}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Jadwal (jam)">
+                    <input type="time" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </Field>
+                  <div className="flex items-end"><div className="text-[11px] text-slate-500">Publish di tanggal <strong>{new Date(form.date).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'})}</strong></div></div>
+                </div>
+                {publishResult && (
+                  <div className={`text-xs px-2.5 py-2 rounded ${publishResult.ok?'bg-emerald-50 text-emerald-800 border border-emerald-200':'bg-red-50 text-red-800 border border-red-200'}`}>
+                    {publishResult.ok?'✅ ':'❌ '}{publishResult.message}
+                  </div>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button type="button" disabled={publishing} onClick={()=>doPublish(false)} className="flex-1 text-sm px-3 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-medium disabled:opacity-50 hover:opacity-90">{publishing?'Memproses…':'🚀 Publish Sekarang'}</button>
+                  <button type="button" disabled={publishing} onClick={()=>doPublish(true)} className="flex-1 text-sm px-3 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium disabled:opacity-50 hover:opacity-90">{publishing?'Memproses…':'📅 Jadwalkan'}</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-2">
           {it && <button onClick={()=>onDelete(it.id)} className="mr-auto text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">🗑 Hapus</button>}
@@ -1524,6 +1675,130 @@ function UsersRolesTab({ roles }) {
                 </tr>
               ))}
               {loading && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+
+/* =========== ACTIVITY LOGS TAB =========== */
+function ActivityLogsTab() {
+  const [logs, setLogs] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [filterAction, setFilterAction] = useState('')
+  const [filterActor, setFilterActor] = useState('')
+  const [days, setDays] = useState(7)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams()
+      qs.set('limit', '200')
+      if (days > 0) qs.set('days', String(days))
+      if (filterAction) qs.set('action', filterAction)
+      if (filterActor) qs.set('actor', filterActor.toLowerCase())
+      const [lr, sr] = await Promise.all([
+        fetch(`/api/activity-logs?${qs.toString()}`).then(r=>r.json()),
+        fetch('/api/activity-summary').then(r=>r.json()),
+      ])
+      setLogs(lr.logs || [])
+      setSummary(sr)
+    } catch {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [days, filterAction, filterActor])
+
+  const ACTION_LABELS = {
+    'auth.login': { l:'Login', color:'bg-blue-50 text-blue-700 ring-blue-200', icon:'🔐' },
+    'user.upsert': { l:'Tambah/Ubah User', color:'bg-emerald-50 text-emerald-700 ring-emerald-200', icon:'👤' },
+    'user.delete': { l:'Hapus User', color:'bg-red-50 text-red-700 ring-red-200', icon:'🗑' },
+    'ayrshare.link': { l:'Link Ayrshare', color:'bg-indigo-50 text-indigo-700 ring-indigo-200', icon:'🔗' },
+    'ayrshare.publish': { l:'Publish Ayrshare', color:'bg-purple-50 text-purple-700 ring-purple-200', icon:'🚀' },
+    'ayrshare.schedule': { l:'Jadwalkan Ayrshare', color:'bg-amber-50 text-amber-700 ring-amber-200', icon:'📅' },
+    'impact-stats.update': { l:'Update Statistik Dampak', color:'bg-slate-50 text-slate-700 ring-slate-200', icon:'📊' },
+  }
+
+  function fmtRelative(ts) {
+    const t = new Date(ts).getTime()
+    const diff = Date.now() - t
+    const sec = Math.floor(diff/1000)
+    if (sec < 60) return `${sec}d lalu`
+    if (sec < 3600) return `${Math.floor(sec/60)}m lalu`
+    if (sec < 86400) return `${Math.floor(sec/3600)}j lalu`
+    return `${Math.floor(sec/86400)}h lalu`
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aktivitas 24 Jam</div>
+          <div className="text-2xl font-bold text-slate-900 mt-1">{summary?.total24h ?? '—'}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aktivitas 7 Hari</div>
+          <div className="text-2xl font-bold text-slate-900 mt-1">{summary?.total7d ?? '—'}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Login Gagal 24 Jam</div>
+          <div className={`text-2xl font-bold mt-1 ${summary?.loginFails24h > 0 ? 'text-red-600' : 'text-slate-900'}`}>{summary?.loginFails24h ?? '—'}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aksi Terbanyak</div>
+          <div className="text-sm font-semibold text-slate-900 mt-1 truncate">{summary?.byAction?.[0]?.action || '—'} <span className="text-xs text-slate-500 font-normal">×{summary?.byAction?.[0]?.count || 0}</span></div>
+        </div>
+      </div>
+
+      <Card title="Log Aktivitas Pengguna" desc="Riwayat semua tindakan penting untuk audit trail">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <Select label="Periode" value={String(days)} onChange={v=>setDays(+v)} options={[{v:'1',l:'24 Jam'},{v:'7',l:'7 Hari'},{v:'30',l:'30 Hari'},{v:'0',l:'Semua'}]} />
+          <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">Filter Aksi</div>
+            <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white min-w-[200px]">
+              <option value="">Semua Aksi</option>
+              {Object.entries(ACTION_LABELS).map(([k,v])=><option key={k} value={k}>{v.icon} {v.l}</option>)}
+            </select>
+          </label>
+          <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">Filter Aktor (email)</div>
+            <input value={filterActor} onChange={e=>setFilterActor(e.target.value)} placeholder="cth: annisa.permatasari@…" className="px-3 py-2 rounded-lg border border-slate-200 text-sm min-w-[260px]" />
+          </label>
+          <button onClick={load} className="ml-auto text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Refresh</button>
+        </div>
+
+        <div className="overflow-x-auto -mx-2">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+              <tr>{['Waktu','Aksi','Aktor','Target','Status','Detail','IP'].map(h=><th key={h} className="text-left px-3 py-2.5 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500 text-xs">Memuat…</td></tr>}
+              {!loading && logs.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500 text-xs italic">Belum ada aktivitas tercatat pada periode ini.</td></tr>}
+              {logs.map(l => {
+                const meta = ACTION_LABELS[l.action] || { l:l.action, color:'bg-slate-50 text-slate-700 ring-slate-200', icon:'•' }
+                return (
+                  <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50/60">
+                    <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
+                      <div className="font-medium text-slate-800">{fmtRelative(l.ts)}</div>
+                      <div className="text-[10px] text-slate-500">{new Date(l.ts).toLocaleString('id-ID')}</div>
+                    </td>
+                    <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded ring-1 ${meta.color}`}>{meta.icon} {meta.l}</span></td>
+                    <td className="px-3 py-2 text-xs font-mono text-slate-700 max-w-[220px] truncate" title={l.actor}>{l.actor}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600 font-mono max-w-[220px] truncate" title={l.target || '—'}>{l.target || '—'}</td>
+                    <td className="px-3 py-2">
+                      {l.status === 'success' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">✓ Sukses</span>}
+                      {l.status === 'failure' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 ring-1 ring-red-200">✗ Gagal</span>}
+                      {l.status === 'info' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-700 ring-1 ring-slate-200">ℹ Info</span>}
+                    </td>
+                    <td className="px-3 py-2 text-[11px] text-slate-500 max-w-[280px]">
+                      {l.meta ? Object.entries(l.meta).slice(0,3).map(([k,v]) => <div key={k} className="truncate"><span className="text-slate-400">{k}:</span> {typeof v === 'object' ? JSON.stringify(v).slice(0,60) : String(v).slice(0,80)}</div>) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-[10px] font-mono text-slate-500">{l.ip || '—'}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

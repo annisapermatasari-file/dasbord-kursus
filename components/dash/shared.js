@@ -38,14 +38,17 @@ export function MockDataBanner() {
   )
 }
 
-export function KpiCard({ label, value, prev, spark = [], format='num', prefix='' }) {
+export function KpiCard({ label, value, prev, spark = [], format='num', prefix='', isLive=false }) {
   const change = pctChange(value, prev)
   const up = change >= 0
   const displayValue = format === 'pct' ? `${value}%` : format === 'time' ? fmtDuration(value) : `${prefix}${formatNumber(value)}`
   const id = label.replace(/[^a-z0-9]/gi,'-')
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition">
-      <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
+    <div className={`bg-white rounded-2xl border p-4 shadow-sm hover:shadow-md transition ${isLive?'border-emerald-300 ring-1 ring-emerald-100':'border-slate-200'}`}>
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
+        {isLive && <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 font-semibold uppercase tracking-wider inline-flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />Live</span>}
+      </div>
       <div className="text-[24px] font-bold text-slate-900 leading-none tracking-tight mt-1.5">{displayValue}</div>
       <div className="flex items-center justify-between mt-3">
         <div className={`inline-flex items-center gap-1 text-xs font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>

@@ -5,6 +5,8 @@ import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAc
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
 import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
+import { hasSmtp, sendMail, otpEmail } from '@/lib/mailer'
+import { logActivity, reqContext, listActivity, activitySummary } from '@/lib/activity'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,6 +72,8 @@ export async function GET(request, { params }) {
     if (path === 'ayrshare/status') return ayrStatus()
     if (path === 'ayrshare/analytics') return ayrAnalytics(request)
     if (path === 'ayrshare/refresh') return ayrRefresh()
+    if (path === 'activity-logs') return getActivityLogs(request)
+    if (path === 'activity-summary') return getActivitySummary()
 
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
@@ -122,6 +126,7 @@ export async function DELETE(request, { params }) {
       const err = await ensureNotLastActiveAdmin(col, email.toLowerCase())
       if (err) return NextResponse.json({ error: err }, { status: 400 })
       await col.deleteOne({ email: email.toLowerCase() })
+      await logActivity({ action:'user.delete', actor: request.headers.get('x-actor-email') || 'admin', target: email.toLowerCase(), status:'success', ...reqContext(request) })
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -441,6 +446,7 @@ async function createUser(request) {
   const doc = { name, email, password, role, jabatan, initial: initialsOf(name), active: true, updated_at: now }
   try {
     await col.updateOne({ email }, { $set: doc, $setOnInsert: { created_at: now } }, { upsert: true })
+    await logActivity({ action:'user.upsert', actor: request.headers.get('x-actor-email') || 'admin', target: email, status:'success', meta:{ role, jabatan }, ...reqContext(request) })
     return NextResponse.json({ ok: true, user: { name, email, role, jabatan, initial: doc.initial } })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal menyimpan user' }, { status: 500 })
@@ -452,11 +458,22 @@ async function authLogin(request) {
   const body = await request.json().catch(() => ({}))
   const email = String(body.email || '').trim().toLowerCase()
   const password = String(body.password || '')
-  if (!email || !password) return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
+  const ctx = reqContext(request)
+  if (!email || !password) {
+    await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
+    return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
+  }
   const col = await users()
   const doc = await col.findOne({ email })
-  if (!doc || doc.password !== password) return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
-  if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+  if (!doc || doc.password !== password) {
+    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
+    return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+  }
+  if (doc.active === false) {
+    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason:'inactive' }, ...ctx })
+    return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+  }
+  await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
   return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
 }
 
@@ -493,12 +510,24 @@ async function forgotPassword(request) {
   const code = generateResetCode()
   const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
   await col.updateOne({ email }, { $set: { reset_code: code, reset_expires: expires, updated_at: new Date() } })
-  // NOTE: In production, send email here (SendGrid/SES/SMTP). For demo, return dev_code.
+  // Kirim email OTP via SMTP (nodemailer) jika terkonfigurasi
+  let delivery = 'demo'
+  let dev_code = code
+  let email_error = null
+  if (hasSmtp()) {
+    const tpl = otpEmail({ code, expiresMinutes: 15, name: doc.name || '' })
+    const result = await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text })
+    if (result.ok) { delivery = 'email'; dev_code = null }
+    else { email_error = result.error || 'SMTP gagal' }
+  }
   return NextResponse.json({
     ok: true,
-    message: 'Kode verifikasi telah dibuat. Berlaku 15 menit.',
-    dev_code: code,
-    delivery: 'demo', // will become 'email' once email service is wired
+    message: delivery === 'email'
+      ? `Kode verifikasi telah dikirim ke ${email.replace(/^(.{2}).*@/, '$1***@')}. Cek inbox/spam. Berlaku 15 menit.`
+      : 'Kode verifikasi telah dibuat. Berlaku 15 menit.',
+    dev_code,
+    delivery,
+    email_error,
     masked_email: email.replace(/^(.{2}).*@/, '$1***@'),
   })
 }
@@ -551,7 +580,26 @@ async function saveImpactStats(request) {
   if (cleaned.some(s => !s.v || !s.l)) return NextResponse.json({ error: 'Nilai dan label wajib diisi untuk semua statistik' }, { status: 400 })
   const col = await impactStatsCol()
   await col.updateOne({ _id: 'main' }, { $set: { stats: cleaned, updated_at: now } }, { upsert: true })
+  await logActivity({ action:'impact-stats.update', actor: request.headers.get('x-actor-email') || 'admin', status:'success', meta:{ count: cleaned.length }, ...reqContext(request) })
   return NextResponse.json({ ok: true, stats: cleaned, updated_at: now })
+}
+
+/* ============ ACTIVITY LOGS ============ */
+async function getActivityLogs(request) {
+  const url = new URL(request.url)
+  const limit = +(url.searchParams.get('limit') || 100)
+  const actor = url.searchParams.get('actor') || undefined
+  const action = url.searchParams.get('action') || undefined
+  const status = url.searchParams.get('status') || undefined
+  const days = +(url.searchParams.get('days') || 0)
+  const since = days > 0 ? new Date(Date.now() - days*86400000) : undefined
+  const logs = await listActivity({ limit, actor, action, status, since })
+  return NextResponse.json({ logs })
+}
+
+async function getActivitySummary() {
+  const s = await activitySummary()
+  return NextResponse.json(s)
 }
 
 /* ============ AI INSIGHTS ============ */
@@ -614,6 +662,8 @@ async function ayrLink(request) {
   if (!hasAyrshareCreds()) return NextResponse.json({ error: 'Kredensial Ayrshare belum dikonfigurasi' }, { status: 400 })
   const body = await request.json().catch(()=>({}))
   const platforms = body.platforms || ['facebook','instagram','youtube','tiktok']
+  const ctx = reqContext(request)
+  const actor = request.headers.get('x-actor-email') || 'admin'
 
   // Pastikan ada profile — jika belum, buat baru
   let stored = await getStoredProfile()
@@ -639,8 +689,10 @@ async function ayrLink(request) {
     verify: false,
   })
   if (!jwt.ok) {
+    await logActivity({ action:'ayrshare.link', actor, status:'failure', meta:{ detail: jwt.data }, ...ctx })
     return NextResponse.json({ error: 'Gagal generate JWT', detail: jwt.data }, { status: 502 })
   }
+  await logActivity({ action:'ayrshare.link', actor, status:'success', meta:{ platforms }, ...ctx })
   return NextResponse.json({
     ok: true,
     url: jwt.data?.url,
@@ -674,10 +726,19 @@ async function ayrAnalytics(request) {
 
 async function ayrPost(request) {
   const stored = await getStoredProfile()
+  const ctx = reqContext(request)
+  const actor = request.headers.get('x-actor-email') || 'admin'
   if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 400 })
   const body = await request.json().catch(()=>({}))
   if (!body.post) return NextResponse.json({ error: 'post (caption) wajib diisi' }, { status: 400 })
   if (!body.platforms || !body.platforms.length) return NextResponse.json({ error: 'platforms wajib' }, { status: 400 })
   const { ok, data, status } = await createPost(stored.profileKey, body)
+  await logActivity({
+    action: body.scheduleDate ? 'ayrshare.schedule' : 'ayrshare.publish',
+    actor,
+    status: ok ? 'success' : 'failure',
+    meta: { platforms: body.platforms, scheduleDate: body.scheduleDate || null, caption: (body.post || '').slice(0, 140), hasMedia: !!(body.mediaUrls && body.mediaUrls.length), postId: data?.id, error: !ok ? (data?.message || 'failed') : undefined },
+    ...ctx,
+  })
   return NextResponse.json({ ok, data }, { status: ok ? 200 : status })
 }
