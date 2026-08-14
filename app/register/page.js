@@ -1,41 +1,47 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 const plans = {
   starter: {
     name: 'STARTER',
-    promoPrice: 'Rp99.000',
-    normalPrice: 'Rp149.000',
-    promo: 'Promo 2 bulan pertama',
-    description: 'Untuk UMKM dan bisnis kecil.',
+    price: '$10',
+    normalPrice: '$15',
+    promo: true,
+    description: {
+      en: 'For small businesses and startups.',
+      id: 'Untuk UMKM dan bisnis kecil.',
+    },
   },
-
   business: {
     name: 'BUSINESS',
-    promoPrice: 'Rp299.000',
-    normalPrice: 'Rp499.000',
-    promo: null,
-    description: 'Untuk bisnis yang sedang berkembang.',
+    price: '$30',
+    normalPrice: '$50',
+    promo: false,
+    description: {
+      en: 'For growing businesses.',
+      id: 'Untuk bisnis yang sedang berkembang.',
+    },
   },
-
   agency: {
     name: 'AGENCY / ORGANIZATION',
-    promoPrice: 'Rp999.000',
-    normalPrice: 'Rp2.500.000+',
-    promo: null,
-    description: 'Untuk agency dan organisasi.',
+    price: '$100+',
+    normalPrice: 'Custom',
+    promo: false,
+    description: {
+      en: 'For agencies and organizations.',
+      id: 'Untuk agency dan organisasi.',
+    },
   },
 }
 
-function RegisterPageContent() {
-  const searchParams = useSearchParams()
+export default function RegisterPage() {
   const router = useRouter()
 
-  const selectedPlan = searchParams.get('plan') || 'starter'
-  const plan = plans[selectedPlan] || plans.starter
+  const [language, setLanguage] = useState('en')
+  const [selectedPlan, setSelectedPlan] = useState('starter')
 
   const [showPassword, setShowPassword] = useState(false)
 
@@ -49,19 +55,122 @@ function RegisterPageContent() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  // Read plan from URL without useSearchParams()
+  // This avoids the Vercel Suspense/build error.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const planFromUrl = params.get('plan')
+
+    if (planFromUrl && plans[planFromUrl]) {
+      setSelectedPlan(planFromUrl)
+    }
+  }, [])
+
+  const plan = plans[selectedPlan] || plans.starter
+
+  const t = {
+    en: {
+      back: '← Back to Pricing',
+      title: 'Create your account',
+      subtitle: 'Start using SocialPulse to grow your business.',
+      selectedPlan: 'Selected plan',
+      month: '/ month',
+      promo: 'Introductory price for the first 2 months',
+      normalPrice: 'Regular price',
+      fullName: 'Full name',
+      fullNamePlaceholder: 'Your name',
+      businessName: 'Business name',
+      businessNamePlaceholder: 'Company / business name',
+      email: 'Email address',
+      emailPlaceholder: 'name@company.com',
+      emailNote: 'Your email will be used for your account and promotional verification.',
+      password: 'Password',
+      passwordPlaceholder: 'Minimum 8 characters',
+      show: 'Show',
+      hide: 'Hide',
+      agreement: 'I agree to the SocialPulse Terms & Conditions and Privacy Policy.',
+      create: 'Create Account',
+      creating: 'Creating Account...',
+      loginQuestion: 'Already have an account?',
+      login: 'Sign in',
+      success: 'Registration successful. Please sign in.',
+      registerError: 'Registration failed',
+      requiredError: 'Please complete all required fields.',
+      passwordError: 'Password must be at least 8 characters.',
+      agreementError: 'Please accept the Terms & Conditions and Privacy Policy.',
+      leftTitle: 'Manage social media',
+      leftHighlight: 'smarter.',
+      leftDescription:
+        'Monitor social media performance, understand your audience, and discover business growth opportunities from one dashboard.',
+      feature1: 'Social media analytics',
+      feature2: 'AI-powered insights',
+      feature3: 'Performance reports',
+      feature4: 'Multi-platform analytics',
+      languageName: 'English',
+    },
+
+    id: {
+      back: '← Kembali ke Pricing',
+      title: 'Buat akun Anda',
+      subtitle: 'Mulai gunakan SocialPulse untuk mengembangkan bisnis Anda.',
+      selectedPlan: 'Paket yang dipilih',
+      month: '/ bulan',
+      promo: 'Harga promo untuk 2 bulan pertama',
+      normalPrice: 'Harga normal',
+      fullName: 'Nama lengkap',
+      fullNamePlaceholder: 'Nama Anda',
+      businessName: 'Nama bisnis',
+      businessNamePlaceholder: 'Nama perusahaan / bisnis',
+      email: 'Alamat email',
+      emailPlaceholder: 'nama@perusahaan.com',
+      emailNote: 'Email digunakan untuk akun dan verifikasi promo.',
+      password: 'Kata sandi',
+      passwordPlaceholder: 'Minimal 8 karakter',
+      show: 'Lihat',
+      hide: 'Sembunyikan',
+      agreement:
+        'Saya menyetujui Syarat & Ketentuan dan Kebijakan Privasi SocialPulse.',
+      create: 'Buat Akun',
+      creating: 'Membuat Akun...',
+      loginQuestion: 'Sudah memiliki akun?',
+      login: 'Masuk',
+      success: 'Registrasi berhasil. Silakan login.',
+      registerError: 'Registrasi gagal',
+      requiredError: 'Mohon lengkapi semua kolom yang wajib diisi.',
+      passwordError: 'Kata sandi minimal 8 karakter.',
+      agreementError: 'Mohon setujui Syarat & Ketentuan dan Kebijakan Privasi.',
+      leftTitle: 'Mulai kelola media sosial',
+      leftHighlight: 'lebih cerdas.',
+      leftDescription:
+        'Pantau performa media sosial, pahami audiens, dan temukan peluang pertumbuhan bisnis dari satu dashboard.',
+      feature1: 'Analytics media sosial',
+      feature2: 'AI-powered insights',
+      feature3: 'Laporan performa',
+      feature4: 'Multi-platform analytics',
+      languageName: 'Indonesia',
+    },
+  }
+
+  const text = t[language]
+
   async function handleSubmit(e) {
     e.preventDefault()
 
     setError('')
     setSuccess('')
 
-    if (!agree) {
-      setError('Anda harus menyetujui Syarat & Ketentuan dan Kebijakan Privasi.')
+    if (!name || !businessName || !email || !password) {
+      setError(text.requiredError)
       return
     }
 
     if (password.length < 8) {
-      setError('Kata sandi minimal 8 karakter.')
+      setError(text.passwordError)
+      return
+    }
+
+    if (!agree) {
+      setError(text.agreementError)
       return
     }
 
@@ -86,17 +195,16 @@ function RegisterPageContent() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Registrasi gagal')
+        throw new Error(data.error || text.registerError)
       }
 
-      setSuccess('Registrasi berhasil. Mengarahkan ke halaman login...')
+      setSuccess(text.success)
 
       setTimeout(() => {
         router.push('/login')
       }, 1500)
-
     } catch (err) {
-      setError(err.message || 'Terjadi kesalahan')
+      setError(err.message || text.registerError)
     } finally {
       setLoading(false)
     }
@@ -106,7 +214,7 @@ function RegisterPageContent() {
     <main className="min-h-screen bg-slate-950 text-white">
       <div className="grid min-h-screen lg:grid-cols-2">
 
-        {/* LEFT */}
+        {/* LEFT SIDE */}
         <section className="hidden lg:flex flex-col justify-center px-16 bg-gradient-to-br from-blue-950 via-indigo-950 to-slate-950">
           <div className="max-w-xl">
 
@@ -127,47 +235,77 @@ function RegisterPageContent() {
             </div>
 
             <h1 className="text-5xl font-bold leading-tight">
-              Mulai kelola media sosial
+              {text.leftTitle}
               <span className="text-blue-400">
-                {' '}lebih cerdas.
+                {' '}{text.leftHighlight}
               </span>
             </h1>
 
             <p className="mt-6 text-lg leading-8 text-slate-300">
-              Pantau performa media sosial, pahami audiens,
-              dan temukan peluang pertumbuhan bisnis dari
-              satu dashboard.
+              {text.leftDescription}
             </p>
 
             <div className="mt-10 space-y-4 text-slate-300">
-              <div>✓ Analytics media sosial</div>
-              <div>✓ AI-powered insights</div>
-              <div>✓ Laporan performa</div>
-              <div>✓ Multi-platform analytics</div>
+              <div>✓ {text.feature1}</div>
+              <div>✓ {text.feature2}</div>
+              <div>✓ {text.feature3}</div>
+              <div>✓ {text.feature4}</div>
             </div>
 
           </div>
         </section>
 
-        {/* RIGHT */}
+        {/* RIGHT SIDE */}
         <section className="flex items-center justify-center px-6 py-12">
           <div className="w-full max-w-lg">
 
+            {/* LANGUAGE SWITCHER */}
+            <div className="mb-6 flex justify-end">
+              <div className="flex rounded-full border border-slate-700 bg-slate-900 p-1">
+
+                <button
+                  type="button"
+                  onClick={() => setLanguage('en')}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    language === 'en'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🇬🇧 English
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLanguage('id')}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    language === 'id'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🇮🇩 Indonesia
+                </button>
+
+              </div>
+            </div>
+
+            {/* HEADER */}
             <div className="mb-8">
 
               <Link
                 href="/pricing"
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
-                ← Kembali ke Pricing
+                {text.back}
               </Link>
 
               <h2 className="mt-6 text-3xl font-bold">
-                Buat akun Anda
+                {text.title}
               </h2>
 
               <p className="mt-2 text-slate-400">
-                Mulai gunakan SocialPulse untuk bisnis Anda.
+                {text.subtitle}
               </p>
 
             </div>
@@ -179,7 +317,7 @@ function RegisterPageContent() {
 
                 <div>
                   <div className="text-sm text-blue-300">
-                    Paket yang dipilih
+                    {text.selectedPlan}
                   </div>
 
                   <div className="mt-1 text-xl font-bold">
@@ -187,51 +325,47 @@ function RegisterPageContent() {
                   </div>
 
                   <div className="mt-1 text-sm text-slate-400">
-                    {plan.description}
+                    {plan.description[language]}
                   </div>
                 </div>
 
                 <div className="text-right">
 
                   <div className="text-2xl font-bold">
-                    {plan.promoPrice}
+                    {plan.price}
                   </div>
 
                   <div className="text-xs text-slate-400">
-                    / bulan
+                    {text.month}
                   </div>
 
                   {plan.promo && (
                     <div className="mt-1 text-xs font-semibold text-green-400">
-                      {plan.promo}
+                      {text.promo}
                     </div>
                   )}
 
                   <div className="mt-1 text-xs text-slate-500">
-                    Harga normal {plan.normalPrice}
+                    {text.normalPrice} {plan.normalPrice}
                   </div>
 
                 </div>
 
               </div>
-
             </div>
 
             {/* FORM */}
-            <form
-              onSubmit={handleSubmit}
-              className="space-y-5"
-            >
+            <form onSubmit={handleSubmit} className="space-y-5">
 
               {/* NAME */}
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Nama lengkap
+                  {text.fullName}
                 </label>
 
                 <input
                   type="text"
-                  placeholder="Nama Anda"
+                  placeholder={text.fullNamePlaceholder}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-blue-500"
@@ -242,12 +376,12 @@ function RegisterPageContent() {
               {/* BUSINESS */}
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Nama bisnis
+                  {text.businessName}
                 </label>
 
                 <input
                   type="text"
-                  placeholder="Nama perusahaan / bisnis"
+                  placeholder={text.businessNamePlaceholder}
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-blue-500"
@@ -258,12 +392,12 @@ function RegisterPageContent() {
               {/* EMAIL */}
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Email
+                  {text.email}
                 </label>
 
                 <input
                   type="email"
-                  placeholder="nama@perusahaan.com"
+                  placeholder={text.emailPlaceholder}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-blue-500"
@@ -271,21 +405,21 @@ function RegisterPageContent() {
                 />
 
                 <p className="mt-2 text-xs text-slate-500">
-                  Email digunakan untuk akun dan verifikasi promo.
+                  {text.emailNote}
                 </p>
               </div>
 
               {/* PASSWORD */}
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Kata sandi
+                  {text.password}
                 </label>
 
                 <div className="relative">
 
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Minimal 8 karakter"
+                    placeholder={text.passwordPlaceholder}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 pr-24 text-white outline-none focus:border-blue-500"
@@ -297,7 +431,7 @@ function RegisterPageContent() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
                   >
-                    {showPassword ? 'Sembunyikan' : 'Lihat'}
+                    {showPassword ? text.hide : text.show}
                   </button>
 
                 </div>
@@ -315,8 +449,7 @@ function RegisterPageContent() {
                 />
 
                 <span>
-                  Saya menyetujui Syarat & Ketentuan dan
-                  Kebijakan Privasi SocialPulse.
+                  {text.agreement}
                 </span>
 
               </label>
@@ -341,22 +474,21 @@ function RegisterPageContent() {
                 disabled={loading}
                 className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 font-bold text-white shadow-lg shadow-blue-500/20 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? 'Membuat Akun...' : 'Buat Akun'}
+                {loading ? text.creating : text.create}
               </button>
 
             </form>
 
+            {/* LOGIN */}
             <p className="mt-6 text-center text-sm text-slate-400">
-
-              Sudah memiliki akun?{' '}
+              {text.loginQuestion}{' '}
 
               <Link
                 href="/login"
                 className="font-semibold text-blue-400 hover:text-blue-300"
               >
-                Masuk
+                {text.login}
               </Link>
-
             </p>
 
           </div>
@@ -364,32 +496,5 @@ function RegisterPageContent() {
 
       </div>
     </main>
-  )
-}
-
-/*
-  useSearchParams() harus berada di dalam Suspense
-  agar build Vercel tidak gagal.
-*/
-
-export default function RegisterPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-          <div className="text-center">
-            <div className="text-xl font-bold">
-              SocialPulse
-            </div>
-
-            <div className="mt-2 text-sm text-slate-400">
-              Memuat halaman registrasi...
-            </div>
-          </div>
-        </main>
-      }
-    >
-      <RegisterPageContent />
-    </Suspense>
   )
 }
