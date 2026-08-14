@@ -1,328 +1,224 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-
-const plans = {
-  id: [
-    {
-      name: 'STARTER',
-      pricePromo: 'Rp99.000',
-      priceNormal: 'Rp149.000',
-      period: '/ bulan',
-      description: 'Untuk UMKM dan bisnis kecil.',
-      promo: 'PROMO 2 BULAN',
-      features: [
-        '1 pengguna',
-        '2 koneksi media sosial',
-        'Analytics dasar',
-        'AI Insights terbatas',
-        'Laporan bulanan',
-      ],
-      button: 'Mulai Sekarang',
-      highlighted: false,
-    },
-    {
-      name: 'BUSINESS',
-      pricePromo: 'Rp299.000',
-      priceNormal: 'Rp499.000',
-      period: '/ bulan',
-      description: 'Untuk bisnis yang sedang berkembang.',
-      promo: 'PROMO TERBATAS',
-      features: [
-        '5–10 koneksi media sosial',
-        'Instagram',
-        'Facebook',
-        'TikTok',
-        'YouTube',
-        'Analytics lengkap',
-        'AI Recommendations',
-        'Export laporan',
-        'Multiple users',
-        'Laporan otomatis',
-      ],
-      button: 'Mulai Sekarang',
-      highlighted: true,
-    },
-    {
-      name: 'AGENCY / ORGANIZATION',
-      pricePromo: 'Rp999.000',
-      priceNormal: 'Rp2.500.000+',
-      period: '/ bulan',
-      description: 'Untuk agency dan organisasi.',
-      promo: 'CUSTOM PLAN',
-      features: [
-        'Banyak akun / client',
-        'Banyak pengguna',
-        'White-label',
-        'Laporan otomatis',
-        'AI Analytics',
-        'Role Management',
-        'API & Integrasi',
-      ],
-      button: 'Hubungi Kami',
-      highlighted: false,
-    },
-  ],
-
-  en: [
-    {
-      name: 'STARTER',
-      pricePromo: 'Rp99,000',
-      priceNormal: 'Rp149,000',
-      period: '/ month',
-      description: 'For small businesses and creators.',
-      promo: '2-MONTH PROMO',
-      features: [
-        '1 user',
-        '2 social media connections',
-        'Basic analytics',
-        'Limited AI insights',
-        'Monthly reports',
-      ],
-      button: 'Get Started',
-      highlighted: false,
-    },
-    {
-      name: 'BUSINESS',
-      pricePromo: 'Rp299,000',
-      priceNormal: 'Rp499,000',
-      period: '/ month',
-      description: 'For growing businesses.',
-      promo: 'LIMITED PROMO',
-      features: [
-        '5–10 social media connections',
-        'Instagram',
-        'Facebook',
-        'TikTok',
-        'YouTube',
-        'Advanced analytics',
-        'AI recommendations',
-        'Report export',
-        'Multiple users',
-        'Automated reports',
-      ],
-      button: 'Get Started',
-      highlighted: true,
-    },
-    {
-      name: 'AGENCY / ORGANIZATION',
-      pricePromo: 'Rp999,000',
-      priceNormal: 'Rp2,500,000+',
-      period: '/ month',
-      description: 'For agencies and organizations.',
-      promo: 'CUSTOM PLAN',
-      features: [
-        'Multiple accounts / clients',
-        'Multiple users',
-        'White-label',
-        'Automated reports',
-        'AI analytics',
-        'Role management',
-        'API & integrations',
-      ],
-      button: 'Contact Us',
-      highlighted: false,
-    },
-  ],
-}
+const plans = [
+  {
+    id: 'starter',
+    name: 'STARTER',
+    price: 'Rp99.000',
+    normalPrice: 'Rp149.000',
+    period: '/ bulan',
+    badge: 'PROMO 2 BULAN',
+    description: 'Untuk UMKM dan bisnis kecil.',
+    features: [
+      'Analytics media sosial',
+      'AI-powered insights',
+      'Laporan performa',
+      'Multi-platform analytics',
+    ],
+    button: 'Mulai dengan Starter',
+    href: '/register?plan=starter',
+  },
+  {
+    id: 'business',
+    name: 'BUSINESS',
+    price: 'Rp299.000',
+    normalPrice: 'Rp499.000',
+    period: '/ bulan',
+    badge: 'PROMO TERBATAS',
+    popular: true,
+    description: 'Untuk bisnis yang sedang berkembang.',
+    features: [
+      'Semua fitur Starter',
+      'Analytics lebih lengkap',
+      'AI-powered business insights',
+      'Laporan performa berkala',
+      'Multi-platform analytics',
+    ],
+    button: 'Mulai dengan Business',
+    href: '/register?plan=business',
+  },
+  {
+    id: 'agency',
+    name: 'AGENCY / ORGANIZATION',
+    price: 'Rp999.000',
+    normalPrice: 'Rp2.500.000+',
+    period: '/ bulan',
+    badge: 'CUSTOM PLAN',
+    description: 'Untuk agency dan organisasi.',
+    features: [
+      'Semua fitur Business',
+      'Multi-account management',
+      'Advanced analytics',
+      'Laporan untuk organisasi',
+      'Dukungan prioritas',
+    ],
+    button: 'Hubungi Kami',
+    href: '/contact',
+  },
+]
 
 export default function PricingPage() {
-  const [language, setLanguage] = useState('id')
-
-  const currentPlans = plans[language]
-
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 font-bold">
-              S
-            </div>
 
-            <div>
-              <div className="text-lg font-bold tracking-tight">
-                SocialPulse
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-slate-400">
-                Analytics Platform
-              </div>
-            </div>
-          </Link>
+      {/* HEADER */}
+      <section className="px-6 pb-12 pt-20">
+        <div className="mx-auto max-w-5xl text-center">
 
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="hidden text-sm text-slate-300 transition hover:text-white sm:block"
-            >
-              {language === 'id' ? 'Beranda' : 'Home'}
-            </Link>
-
-            <div className="flex rounded-full border border-white/10 bg-white/5 p-1">
-              <button
-                onClick={() => setLanguage('id')}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                  language === 'id'
-                    ? 'bg-white text-slate-900'
-                    : 'text-slate-300'
-                }`}
-              >
-                ID
-              </button>
-
-              <button
-                onClick={() => setLanguage('en')}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                  language === 'en'
-                    ? 'bg-white text-slate-900'
-                    : 'text-slate-300'
-                }`}
-              >
-                EN
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero */}
-      <section className="px-6 pb-12 pt-16 text-center">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-5 inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-blue-300">
-            {language === 'id'
-              ? 'Harga sederhana untuk bisnis yang berkembang'
-              : 'Simple pricing for growing businesses'}
+          <div className="mb-6 inline-flex rounded-full border border-blue-500/40 bg-blue-500/10 px-5 py-2 text-sm font-semibold text-blue-300">
+            HARGA SEDERHANA UNTUK BISNIS YANG BERKEMBANG
           </div>
 
-          <h1 className="text-4xl font-black tracking-tight sm:text-6xl">
-            {language === 'id'
-              ? 'Pilih paket yang tepat untuk bisnis Anda.'
-              : 'Choose the right plan for your business.'}
+          <h1 className="text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
+            Pilih paket yang tepat
+            <br />
+            untuk bisnis Anda.
           </h1>
 
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-400">
-            {language === 'id'
-              ? 'Kelola, analisis, dan pahami performa media sosial Anda dalam satu dashboard.'
-              : 'Manage, analyze, and understand your social media performance from one dashboard.'}
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-400">
+            Kelola, analisis, dan pahami performa media sosial Anda
+            dalam satu dashboard.
           </p>
+
         </div>
       </section>
 
-      {/* Promo Banner */}
+      {/* PROMO */}
       <section className="px-6 pb-10">
-        <div className="mx-auto max-w-5xl rounded-2xl border border-blue-400/20 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 p-5 text-center">
-          <div className="text-sm font-bold uppercase tracking-wider text-blue-300">
-            {language === 'id'
-              ? '🎉 Promo Perkenalan'
-              : '🎉 Introductory Offer'}
+        <div className="mx-auto max-w-6xl rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-950/80 to-indigo-950/80 px-6 py-7 text-center">
+
+          <div className="text-sm font-bold tracking-wide text-blue-300">
+            🎉 PROMO PERKENALAN
           </div>
 
-          <div className="mt-2 text-lg font-semibold">
-            {language === 'id'
-              ? 'Harga promo berlaku selama 2 bulan untuk setiap akun.'
-              : 'Promotional pricing is available for 2 months per account.'}
+          <div className="mt-3 text-lg font-bold">
+            Harga promo berlaku selama 2 bulan untuk setiap akun.
           </div>
 
-          <div className="mt-1 text-sm text-slate-400">
-            {language === 'id'
-              ? 'Setelah masa promo berakhir, harga normal akan berlaku.'
-              : 'After the promotional period, regular pricing will apply.'}
+          <div className="mt-2 text-sm text-slate-400">
+            Setelah masa promo berakhir, harga normal akan berlaku.
           </div>
+
         </div>
       </section>
 
-      {/* Pricing Cards */}
-      <section className="px-6 pb-24">
+      {/* PRICING CARDS */}
+      <section className="px-6 pb-20">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">
-          {currentPlans.map((plan) => (
+
+          {plans.map((plan) => (
             <div
-              key={plan.name}
-              className={`relative flex flex-col rounded-3xl border p-7 transition hover:-translate-y-1 ${
-                plan.highlighted
-                  ? 'border-blue-500 bg-gradient-to-b from-blue-500/15 to-indigo-500/5 shadow-2xl shadow-blue-500/10'
-                  : 'border-white/10 bg-white/[0.03]'
-              }`}
+              key={plan.id}
+              className={[
+                'relative flex flex-col rounded-3xl border p-7',
+                plan.popular
+                  ? 'border-blue-500 bg-gradient-to-b from-blue-950/80 to-slate-950 shadow-2xl shadow-blue-500/10'
+                  : 'border-slate-800 bg-slate-900/60',
+              ].join(' ')}
             >
-              {plan.highlighted && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-xs font-bold uppercase tracking-wider shadow-lg">
-                  ⭐ {language === 'id' ? 'Paling Populer' : 'Most Popular'}
+
+              {/* POPULAR */}
+              {plan.popular && (
+                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-xs font-bold text-white shadow-lg">
+                  ⭐ PALING POPULER
                 </div>
               )}
 
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold">{plan.name}</h2>
+              {/* PLAN HEADER */}
+              <div className="flex items-start justify-between gap-4">
 
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                  {plan.promo}
+                <div>
+                  <h2 className="text-xl font-bold">
+                    {plan.name}
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                    {plan.description}
+                  </p>
+                </div>
+
+                <span className="whitespace-nowrap rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-bold text-emerald-400">
+                  {plan.badge}
                 </span>
+
               </div>
 
-              <p className="mt-3 min-h-[48px] text-sm leading-6 text-slate-400">
-                {plan.description}
-              </p>
+              {/* PRICE */}
+              <div className="mt-8">
 
-              <div className="mt-6">
                 <div className="flex items-end gap-2">
-                  <span className="text-3xl font-black sm:text-4xl">
-                    {plan.pricePromo}
+                  <span className="text-3xl font-black">
+                    {plan.price}
                   </span>
 
-                  <span className="pb-1 text-sm text-slate-400">
+                  <span className="pb-1 text-sm text-slate-500">
                     {plan.period}
                   </span>
                 </div>
 
                 <div className="mt-2 text-sm text-slate-500">
-                  {language === 'id' ? 'Harga normal: ' : 'Regular price: '}
-                  <span className="line-through">
-                    {plan.priceNormal}
-                  </span>
-                  <span className="ml-2 text-emerald-400">
-                    {language === 'id' ? 'Promo' : 'Promo'}
-                  </span>
+                  Harga normal {plan.normalPrice}
                 </div>
+
               </div>
 
-              <div className="my-7 h-px bg-white/10" />
+              {/* FEATURES */}
+              <div className="mt-8 flex-1">
 
-              <ul className="flex-1 space-y-3">
-                {plan.features.map((feature) => (
-                  <li
-                    key={feature}
-                    className="flex items-start gap-3 text-sm text-slate-300"
-                  >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-xs text-emerald-400">
-                      ✓
-                    </span>
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
+                <div className="mb-4 text-sm font-semibold text-slate-300">
+                  Yang Anda dapatkan:
+                </div>
 
-              <button
-                className={`mt-8 w-full rounded-xl px-5 py-3.5 text-sm font-bold transition ${
-                  plan.highlighted
+                <ul className="space-y-3">
+                  {plan.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="flex gap-3 text-sm text-slate-300"
+                    >
+                      <span className="text-emerald-400">
+                        ✓
+                      </span>
+
+                      <span>
+                        {feature}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+              </div>
+
+              {/* BUTTON */}
+              <a
+                href={plan.href}
+                className={[
+                  'mt-10 block w-full rounded-xl px-5 py-4 text-center text-sm font-bold transition',
+                  plan.popular
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-indigo-500'
-                    : 'bg-white text-slate-900 hover:bg-slate-200'
-                }`}
+                    : 'border border-slate-700 bg-white text-slate-950 hover:bg-slate-200',
+                ].join(' ')}
               >
                 {plan.button}
-              </button>
+              </a>
+
             </div>
           ))}
+
         </div>
       </section>
 
-      {/* Bottom Note */}
-      <section className="border-t border-white/10 px-6 py-10 text-center">
-        <p className="text-sm text-slate-500">
-          {language === 'id'
-            ? 'Butuh paket khusus atau integrasi enterprise? Hubungi tim kami.'
-            : 'Need a custom plan or enterprise integration? Contact our team.'}
-        </p>
+      {/* FOOTER NOTE */}
+      <section className="border-t border-slate-800 px-6 py-10">
+        <div className="mx-auto max-w-4xl text-center">
+
+          <p className="text-sm leading-6 text-slate-500">
+            Semua paket dapat digunakan untuk mengelola dan
+            menganalisis performa media sosial dari satu dashboard.
+          </p>
+
+        </div>
       </section>
+
     </main>
   )
 }

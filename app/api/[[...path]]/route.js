@@ -438,74 +438,125 @@ async function listUsers() {
 
 async function createUser(request) {
   const body = await request.json().catch(() => ({}))
+
   const name = String(body.name || '').trim()
+  const businessName = String(body.businessName || '').trim()
   const email = String(body.email || '').trim().toLowerCase()
   const password = String(body.password || '')
   const role = String(body.role || '').trim()
   const jabatan = String(body.jabatan || '').trim()
-  if (!name || !email || !password || !role) return NextResponse.json({ error: 'Nama, email, kata sandi, dan peran wajib diisi' }, { status: 400 })
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ error: 'Format email tidak valid' }, { status: 400 })
-  if (!ROLE_ALLOWED.includes(role)) return NextResponse.json({ error: `Peran harus salah satu dari: ${ROLE_ALLOWED.join(', ')}` }, { status: 400 })
-  if (password.length < 6) return NextResponse.json({ error: 'Kata sandi minimal 6 karakter' }, { status: 400 })
+  const plan = String(body.plan || 'starter').trim().toLowerCase()
+
+  if (!name || !email || !password || !role) {
+    return NextResponse.json(
+      { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
+      { status: 400 }
+    )
+  }
+
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return NextResponse.json(
+      { error: 'Format email tidak valid' },
+      { status: 400 }
+    )
+  }
+
+  if (!ROLE_ALLOWED.includes(role)) {
+    return NextResponse.json(
+      { error: `Peran harus salah satu dari: ${ROLE_ALLOWED.join(', ')}` },
+      { status: 400 }
+    )
+  }
+
+  if (password.length < 6) {
+    return NextResponse.json(
+      { error: 'Kata sandi minimal 6 karakter' },
+      { status: 400 }
+    )
+  }
+
   const col = await users()
   const now = new Date()
-  const doc = { name, email, password, role, jabatan, initial: initialsOf(name), active: true, updated_at: now }
+
+  const doc = {
+    name,
+    businessName,
+    email,
+    password,
+    role,
+    jabatan,
+    plan,
+    initial: initialsOf(name),
+    active: true,
+    updated_at: now,
+  }
+
   try {
-    await col.updateOne({ email }, { $set: doc, $setOnInsert: { created_at: now } }, { upsert: true })
-    await logActivity({ action:'user.upsert', actor: request.headers.get('x-actor-email') || 'admin', target: email, status:'success', meta:{ role, jabatan }, ...reqContext(request) })
-    return NextResponse.json({ ok: true, user: { name, email, role, jabatan, initial: doc.initial } })
+    await col.updateOne(
+      { email },
+      {
+        $set: doc,
+        $setOnInsert: { created_at: now },
+      },
+      { upsert: true }
+    )
+
+    await logActivity({
+      action: 'user.upsert',
+      actor: request.headers.get('x-actor-email') || 'admin',
+      target: email,
+      status: 'success',
+      meta: {
+        role,
+        jabatan,
+        businessName,
+        plan,
+      },
+      ...reqContext(request),
+    })
+
+    return NextResponse.json({
+      ok: true,
+      user: {
+        name,
+        businessName,
+        email,
+        role,
+        jabatan,
+        plan,
+        initial: doc.initial,
+      },
+    })
   } catch (e) {
-    return NextResponse.json({ error: e?.message || 'Gagal menyimpan user' }, { status: 500 })
+    return NextResponse.json(
+      { error: e?.message || 'Gagal menyimpan user' },
+      { status: 500 }
+    )
   }
 }
 
 async function authLogin(request) {
-  try {
-    const body = await request.json().catch(() => ({}))
-
-    const email = String(body.email || '')
-      .trim()
-      .toLowerCase()
-
-    const password = String(body.password || '')
-
-    const adminEmail = String(process.env.ADMIN_EMAIL || '')
-      .trim()
-      .toLowerCase()
-
-    const adminPassword = String(process.env.ADMIN_PASSWORD || '')
-
-    if (!adminEmail || !adminPassword) {
-      return NextResponse.json(
-        { error: 'Konfigurasi login Admin belum tersedia.' },
-        { status: 500 }
-      )
-    }
-
-    if (email !== adminEmail || password !== adminPassword) {
-      return NextResponse.json(
-        { error: 'Email atau kata sandi salah.' },
-        { status: 401 }
-      )
-    }
-
-    return NextResponse.json({
-      user: {
-        name: 'Administrator',
-        email: adminEmail,
-        role: 'Admin',
-        jabatan: 'Administrator',
-        initial: 'AD',
-      },
-    })
-  } catch (error) {
-    console.error('Admin login error:', error)
-
-    return NextResponse.json(
-      { error: 'Gagal memproses login.' },
-      { status: 500 }
-    )
+  await ensureSeeded()
+  const body = await request.json().catch(() => ({}))
+  const email = String(body.email || '').trim().toLowerCase()
+  const password = String(body.password || '')
+  const ctx = reqContext(request)
+  if (!email || !password) {
+    await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
+    return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
   }
+  const col = await users()
+  const doc = await col.findOne({ email })
+  if (!doc || doc.password !== password) {
+    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
+    return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+  }
+  if (doc.active === false) {
+    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason:'inactive' }, ...ctx })
+    return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+  }
+  await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
+  return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
 }
 
 async function toggleUserStatus(request) {
