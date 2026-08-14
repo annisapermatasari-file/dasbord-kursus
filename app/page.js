@@ -218,146 +218,485 @@ function LoginScreen({ onLogin, onForgot }) {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
-  const [showHint, setShowHint] = useState(false)
-  const [impactStats, setImpactStats] = useState([
-    { v:'1,2 Jt+',  l:'Alumni Bersertifikasi', s:'BNSP-terverifikasi' },
-    { v:'12.000+',  l:'LKP Aktif',             s:'Tersebar 34 provinsi' },
-    { v:'86%',      l:'Penempatan Kerja',      s:'Alumni bekerja/berwirausaha' },
-    { v:'450+',     l:'Bidang Keahlian',       s:'Selaras SKKNI & industri' },
-  ])
+  const [language, setLanguage] = useState('id')
 
-  useEffect(() => {
-    fetch('/api/impact-stats').then(r=>r.json()).then(j => { if (j.stats?.length) setImpactStats(j.stats) }).catch(()=>{})
-  }, [])
+  const content = {
+    id: {
+      badge: 'SOCIAL MEDIA ANALYTICS PLATFORM',
+      title: 'Kelola Media Sosial,',
+      titleAccent: 'Lebih Cerdas.',
+      description:
+        'Satu dashboard untuk memantau performa media sosial, memahami audiens, dan menemukan peluang pertumbuhan bisnis.',
+      stat1: '10+',
+      stat1Label: 'Platform',
+      stat2: '24/7',
+      stat2Label: 'Monitoring',
+      stat3: 'AI',
+      stat3Label: 'Insights',
+      stat4: '1',
+      stat4Label: 'Dashboard',
+      loginTitle: 'Masuk ke Dashboard',
+      loginDesc: 'Gunakan akun Anda untuk melanjutkan.',
+      email: 'Email',
+      password: 'Kata Sandi',
+      emailPlaceholder: 'nama@perusahaan.com',
+      passwordPlaceholder: 'Masukkan kata sandi',
+      login: 'Masuk',
+      forgot: 'Lupa kata sandi?',
+      help: 'Butuh bantuan?',
+      security:
+        'Kami menjaga keamanan akun Anda. Password media sosial tidak pernah disimpan di sistem ini.',
+      footer: 'SocialPulse — Social Media Analytics',
+      demo:
+        'Platform analytics untuk bisnis, organisasi, creator, dan agency.'
+    },
+
+    en: {
+      badge: 'SOCIAL MEDIA ANALYTICS PLATFORM',
+      title: 'Manage Social Media,',
+      titleAccent: 'Smarter.',
+      description:
+        'One powerful dashboard to monitor social media performance, understand your audience, and discover growth opportunities.',
+      stat1: '10+',
+      stat1Label: 'Platforms',
+      stat2: '24/7',
+      stat2Label: 'Monitoring',
+      stat3: 'AI',
+      stat3Label: 'Insights',
+      stat4: '1',
+      stat4Label: 'Dashboard',
+      loginTitle: 'Sign in to Dashboard',
+      loginDesc: 'Use your account to continue.',
+      email: 'Email',
+      password: 'Password',
+      emailPlaceholder: 'name@company.com',
+      passwordPlaceholder: 'Enter your password',
+      login: 'Sign In',
+      forgot: 'Forgot password?',
+      help: 'Need help?',
+      security:
+        'Your account is protected. Social media passwords are never stored in this system.',
+      footer: 'SocialPulse — Social Media Analytics',
+      demo:
+        'Analytics platform for businesses, organizations, creators, and agencies.'
+    }
+  }
+
+  const t = content[language]
 
   async function submit(e) {
     e?.preventDefault?.()
     setError('')
+
     const em = email.trim().toLowerCase()
+
+    if (!em || !password) {
+      setError(
+        language === 'id'
+          ? 'Email dan kata sandi wajib diisi.'
+          : 'Email and password are required.'
+      )
+      return
+    }
+
     try {
-      const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: em, password }) })
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: em,
+          password
+        })
+      })
+
       const j = await r.json()
-      if (r.ok && j.user) { onLogin(j.user); return }
-      setError(j.error || 'Email atau kata sandi salah. Coba lagi.')
-    } catch (err) { setError('Gagal menghubungi server. Coba lagi.') }
+
+      if (r.ok && j.user) {
+        onLogin(j.user)
+        return
+      }
+
+      setError(
+        j.error ||
+          (language === 'id'
+            ? 'Email atau kata sandi salah.'
+            : 'Invalid email or password.')
+      )
+    } catch (err) {
+      setError(
+        language === 'id'
+          ? 'Gagal menghubungi server. Coba lagi.'
+          : 'Unable to connect to the server. Please try again.'
+      )
+    }
   }
-  function fillAs(u) { setEmail(u.email); setPassword(u.password); setError('') }
 
   return (
-    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
-      {/* LEFT — Hero photo + branding overlay */}
-      <div className="relative min-h-[420px] lg:min-h-screen overflow-hidden text-white">
-        {/* Background image */}
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1690356107685-3725367f6f3f?w=1600&q=80&auto=format&fit=crop')" }} />
-        {/* Dark gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0B2545]/95 via-[#0B2545]/85 to-[#1D4ED8]/75" />
-        {/* Content */}
+    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr]">
+
+      {/* =====================================================
+          LEFT — GENERIC SAAS HERO
+      ====================================================== */}
+      <div className="relative min-h-[560px] lg:min-h-screen overflow-hidden text-white">
+
+        {/* Background */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1556761175-b413da4baf72?w=1800&q=85&auto=format&fit=crop')"
+          }}
+        />
+
+        {/* Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/95 via-blue-950/90 to-indigo-700/80" />
+
+        {/* Decorative glow */}
+        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-400/20 blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-indigo-500/20 blur-3xl" />
+
         <div className="relative z-10 p-8 lg:p-14 h-full flex flex-col justify-between">
-          <div>
+
+          {/* Brand */}
+          <div className="flex items-center justify-between">
+
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center ring-1 ring-white/20"><ShieldCheck className="w-7 h-7 text-white" /></div>
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-blue-200 font-semibold">Kemendikdasmen</div>
-                <div className="text-sm font-bold text-white leading-tight">Direktorat Kursus &amp; Pelatihan</div>
+
+              <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xl flex items-center justify-center ring-1 ring-white/20 shadow-xl">
+                <BarChart3 className="w-7 h-7 text-white" />
               </div>
+
+              <div>
+                <div className="text-xl font-black tracking-tight">
+                  SocialPulse
+                </div>
+
+                <div className="text-[10px] uppercase tracking-[0.22em] text-blue-200">
+                  Analytics Platform
+                </div>
+              </div>
+
             </div>
 
-            <div className="mt-14 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur text-blue-100 text-[11px] font-semibold uppercase tracking-wider mb-5 ring-1 ring-white/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Direktorat Kursus dan Pelatihan
-              </div>
-              <h1 className="text-4xl md:text-[52px] font-black tracking-tight leading-[1.05]">
-                Terampil,<br />Bersertifikasi,<br />
-                <span className="text-blue-200">Berdaya Saing Global.</span>
-              </h1>
-              <p className="text-blue-100/90 mt-5 leading-relaxed max-w-md">
-                Kami mengembangkan kompetensi masyarakat Indonesia melalui program <strong className="text-white">kursus</strong>, <strong className="text-white">pelatihan</strong>, dan <strong className="text-white">sertifikasi</strong> berbasis kebutuhan industri — melalui LKP di seluruh nusantara.
-              </p>
+            {/* Language */}
+            <div className="flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur border border-white/10">
+
+              <button
+                type="button"
+                onClick={() => setLanguage('id')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                  language === 'id'
+                    ? 'bg-white text-slate-900'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                ID
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                  language === 'en'
+                    ? 'bg-white text-slate-900'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
+
             </div>
+
           </div>
 
-          {/* Impact stats */}
-          <div className="mt-10">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
+          {/* Main hero */}
+          <div className="max-w-2xl py-16 lg:py-0">
+
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/15 text-blue-100 text-[10px] font-bold uppercase tracking-[0.16em]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {t.badge}
+            </div>
+
+            <h1 className="mt-6 text-5xl md:text-6xl lg:text-[68px] font-black tracking-tight leading-[0.98]">
+
+              {t.title}
+
+              <br />
+
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-cyan-200">
+                {t.titleAccent}
+              </span>
+
+            </h1>
+
+            <p className="mt-7 text-base lg:text-lg text-blue-100/90 leading-relaxed max-w-xl">
+              {t.description}
+            </p>
+
+            {/* Feature pills */}
+            <div className="flex flex-wrap gap-2 mt-7">
+
+              {[
+                'Analytics',
+                'AI Insights',
+                'Reports',
+                'Multi Platform'
+              ].map(item => (
+                <span
+                  key={item}
+                  className="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 backdrop-blur text-xs text-white/90"
+                >
+                  {item}
+                </span>
+              ))}
+
+            </div>
+
+          </div>
+
+          {/* Stats */}
+          <div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {impactStats.map((s, i) => (
-                <div key={s.l} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
-                  <div className="text-2xl font-black tracking-tight text-white"><CountUp value={s.v} delay={i*150} /></div>
-                  <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l}</div>
-                  <div className="text-[10px] text-blue-100/70 mt-0.5">{s.s}</div>
+
+              {[
+                [t.stat1, t.stat1Label],
+                [t.stat2, t.stat2Label],
+                [t.stat3, t.stat3Label],
+                [t.stat4, t.stat4Label]
+              ].map(([value, label]) => (
+                <div
+                  key={label}
+                  className="rounded-2xl bg-white/10 backdrop-blur-xl border border-white/15 p-4"
+                >
+                  <div className="text-2xl font-black">
+                    {value}
+                  </div>
+
+                  <div className="text-[10px] uppercase tracking-wider text-blue-200 mt-1">
+                    {label}
+                  </div>
                 </div>
               ))}
+
             </div>
-            <div className="text-[10px] text-blue-200/60 mt-4">© {new Date().getFullYear()} Kementerian Pendidikan Dasar dan Menengah · Portal internal — pemantauan komunikasi digital</div>
+
+            <div className="mt-5 text-xs text-blue-200/60">
+              {t.footer}
+            </div>
+
           </div>
+
         </div>
       </div>
 
-      {/* RIGHT — Login form */}
-      <div className="p-8 lg:p-16 flex items-center justify-center bg-slate-50">
-        <div className="w-full max-w-md">
-          <h2 className="text-2xl font-bold text-slate-900">Masuk ke Dashboard</h2>
-          <p className="text-slate-500 mt-1 text-sm">Gunakan akun institusi Anda untuk melanjutkan.</p>
+      {/* =====================================================
+          RIGHT — LOGIN
+      ====================================================== */}
+      <div className="p-6 sm:p-10 lg:p-16 flex items-center justify-center bg-white">
 
-          <form onSubmit={submit} className="mt-8 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <div>
-              <label className="text-xs font-medium text-slate-700">Email</label>
-              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="nama@dikdasmen.belajar.id"
-                     autoComplete="username" className="mt-1 w-full px-3.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+        <div className="w-full max-w-md">
+
+          {/* Mobile brand */}
+          <div className="lg:hidden flex items-center gap-3 mb-10">
+
+            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center">
+              <BarChart3 className="w-6 h-6 text-white" />
             </div>
+
             <div>
-              <label className="text-xs font-medium text-slate-700">Kata Sandi</label>
-              <div className="relative mt-1">
-                <input type={showPw?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"
-                       autoComplete="current-password" className="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
-                <button type="button" onClick={()=>setShowPw(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100">
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              <div className="font-black text-slate-900">
+                SocialPulse
+              </div>
+
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                Analytics Platform
               </div>
             </div>
 
-            {error && <div className="text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
+          </div>
 
-            <button type="submit" className="w-full py-3 rounded-lg bg-[#0B2545] text-white font-semibold hover:bg-[#0e2f5c] transition shadow-sm">Masuk</button>
+          {/* Heading */}
+          <div>
 
-            <div className="flex items-center justify-between text-xs pt-1">
-              <button type="button" onClick={onForgot} className="text-blue-600 hover:text-blue-800 font-medium">Lupa kata sandi?</button>
-              <a href="#" className="text-slate-400 hover:text-slate-600">Butuh bantuan?</a>
+            <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 mb-3">
+              <span className="w-2 h-2 rounded-full bg-blue-600" />
+              {language === 'id' ? 'Selamat datang kembali' : 'Welcome back'}
             </div>
 
-            <div className="flex items-start gap-2 pt-2 text-[11px] text-slate-500 leading-relaxed">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>Otorisasi akun media sosial dilakukan setelah masuk. Kata sandi media sosial tidak pernah diminta atau disimpan di sistem ini.</span>
-            </div>
-          </form>
+            <h2 className="text-3xl font-black tracking-tight text-slate-900">
+              {t.loginTitle}
+            </h2>
 
-          {/* Demo accounts helper */}
-          <div className="mt-4">
-            <button onClick={()=>setShowHint(v=>!v)} className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
-              {showHint ? <><EyeOff className="w-3 h-3" /> Sembunyikan akun demo</> : <><Eye className="w-3 h-3" /> Lihat akun demo untuk uji coba</>}
-            </button>
-            {showHint && (
-              <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-                <div className="text-[11px] text-slate-500 font-medium">Klik salah satu untuk mengisi otomatis:</div>
-                {PRESET_USERS.map(u => (
-                  <button key={u.email} onClick={()=>fillAs(u)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 text-left">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ background: ROLES[u.role]?.color }}>{u.initial}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5"><span className="text-xs font-semibold text-slate-900">{u.name}</span><span className="text-[9px] px-1 py-0.5 rounded font-semibold text-white" style={{ background: ROLES[u.role]?.color }}>{u.role}</span></div>
-                      <div className="text-[10px] text-slate-500 font-mono truncate">{u.email} · {u.password}</div>
-                    </div>
-                  </button>
-                ))}
+            <p className="text-slate-500 mt-2 text-sm">
+              {t.loginDesc}
+            </p>
+
+          </div>
+
+          {/* Form */}
+          <form
+            onSubmit={submit}
+            className="mt-8 bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50 p-6 sm:p-7 space-y-5"
+          >
+
+            {/* Email */}
+            <div>
+
+              <label className="text-xs font-semibold text-slate-700">
+                {t.email}
+              </label>
+
+              <div className="relative mt-2">
+
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder={t.emailPlaceholder}
+                  autoComplete="username"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition"
+                />
+
+              </div>
+
+            </div>
+
+            {/* Password */}
+            <div>
+
+              <label className="text-xs font-semibold text-slate-700">
+                {t.password}
+              </label>
+
+              <div className="relative mt-2">
+
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder={t.passwordPlaceholder}
+                  autoComplete="current-password"
+                  className="w-full px-4 py-3 pr-12 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPw(v => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                >
+                  {showPw ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+
+              </div>
+
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700">
+                {error}
               </div>
             )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-600/20"
+            >
+              {t.login}
+            </button>
+
+            {/* Links */}
+            <div className="flex items-center justify-between text-xs pt-1">
+
+              <button
+                type="button"
+                onClick={onForgot}
+                className="text-blue-600 hover:text-blue-800 font-semibold"
+              >
+                {t.forgot}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  alert(
+                    language === 'id'
+                      ? 'Silakan hubungi administrator platform.'
+                      : 'Please contact your platform administrator.'
+                  )
+                }
+                className="text-slate-400 hover:text-slate-600"
+              >
+                {t.help}
+              </button>
+
+            </div>
+
+            {/* Security */}
+            <div className="flex items-start gap-3 pt-3 border-t border-slate-100">
+
+              <ShieldCheck className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+
+              <span className="text-[11px] text-slate-500 leading-relaxed">
+                {t.security}
+              </span>
+
+            </div>
+
+          </form>
+
+          {/* SaaS description */}
+          <div className="mt-6 text-center">
+
+            <p className="text-xs text-slate-400">
+              {t.demo}
+            </p>
+
           </div>
 
-          <div className="text-[11px] text-slate-400 text-center mt-6 flex items-center justify-center gap-3">
-            <a href="#" className="hover:text-slate-600">Syarat Layanan</a>·<a href="#" className="hover:text-slate-600">Kebijakan Privasi</a>
+          {/* Footer */}
+          <div className="text-[11px] text-slate-400 text-center mt-8 flex items-center justify-center gap-3">
+
+            <span>© {new Date().getFullYear()} SocialPulse</span>
+
+            <span>·</span>
+
+            <a
+              href="#"
+              className="hover:text-slate-600"
+            >
+              {language === 'id'
+                ? 'Kebijakan Privasi'
+                : 'Privacy Policy'}
+            </a>
+
+            <span>·</span>
+
+            <a
+              href="#"
+              className="hover:text-slate-600"
+            >
+              {language === 'id'
+                ? 'Syarat Layanan'
+                : 'Terms of Service'}
+            </a>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
   )
 }
