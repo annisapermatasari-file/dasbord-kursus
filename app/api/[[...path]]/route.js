@@ -443,7 +443,7 @@ async function createUser(request) {
   const businessName = String(body.businessName || '').trim()
   const email = String(body.email || '').trim().toLowerCase()
   const password = String(body.password || '')
-  const role = String(body.role || '').trim()
+  const role = String(body.role || 'Viewer').trim()
   const jabatan = String(body.jabatan || '').trim()
   const plan = String(body.plan || 'starter').trim().toLowerCase()
 
@@ -478,18 +478,19 @@ async function createUser(request) {
   const col = await users()
   const now = new Date()
 
-  const doc = {
-    name,
-    businessName,
-    email,
-    password,
-    role,
-    jabatan,
-    plan,
-    initial: initialsOf(name),
-    active: true,
-    updated_at: now,
-  }
+  const businessName = String(body.businessName || '').trim()
+
+const doc = {
+  name,
+  businessName,
+  email,
+  password,
+  role,
+  jabatan,
+  initial: initialsOf(name),
+  active: true,
+  updated_at: now
+}
 
   try {
     await col.updateOne(

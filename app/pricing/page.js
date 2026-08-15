@@ -1,297 +1,257 @@
-'use client'
-
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { headers } from 'next/headers'
 
-const translations = {
-  id: {
-    language: 'Indonesia',
-    otherLanguage: 'English',
-
-    headerBadge: 'HARGA SEDERHANA UNTUK BISNIS YANG BERKEMBANG',
-    title: (
-      <>
-        Pilih paket yang tepat
-        <br />
-        untuk bisnis Anda.
-      </>
-    ),
-    subtitle:
-      'Kelola, analisis, dan pahami performa media sosial Anda dalam satu dashboard.',
-
-    promoTitle: '🎉 PROMO PERKENALAN',
-    promoMain: 'Harga promo berlaku selama 2 bulan untuk setiap akun.',
-    promoSub: 'Setelah masa promo berakhir, harga normal akan berlaku.',
-
-    popular: '⭐ PALING POPULER',
-
-    featuresTitle: 'Yang Anda dapatkan:',
-    normalPrice: 'Harga normal',
-
-    plans: {
-      starter: {
-        name: 'STARTER',
-        price: 'Rp99.000',
-        normalPrice: 'Rp149.000',
-        period: '/ bulan',
-        badge: 'PROMO 2 BULAN',
-        description: 'Untuk UMKM dan bisnis kecil.',
-        features: [
-          'Analytics media sosial',
-          'AI-powered insights',
-          'Laporan performa',
-          'Multi-platform analytics',
-        ],
-        button: 'Mulai dengan Starter',
-      },
-
-      business: {
-        name: 'BUSINESS',
-        price: 'Rp299.000',
-        normalPrice: 'Rp499.000',
-        period: '/ bulan',
-        badge: 'PROMO TERBATAS',
-        description: 'Untuk bisnis yang sedang berkembang.',
-        features: [
-          'Semua fitur Starter',
-          'Analytics lebih lengkap',
-          'AI-powered business insights',
-          'Laporan performa berkala',
-          'Multi-platform analytics',
-        ],
-        button: 'Mulai dengan Business',
-      },
-
-      agency: {
-        name: 'AGENCY / ORGANIZATION',
-        price: 'Rp999.000',
-        normalPrice: 'Rp2.500.000+',
-        period: '/ bulan',
-        badge: 'CUSTOM PLAN',
-        description: 'Untuk agency dan organisasi.',
-        features: [
-          'Semua fitur Business',
-          'Multi-account management',
-          'Advanced analytics',
-          'Laporan untuk organisasi',
-          'Dukungan prioritas',
-        ],
-        button: 'Hubungi Kami',
-      },
+const plans = {
+  id: [
+    {
+      id: 'starter',
+      name: 'STARTER',
+      price: 'Rp149.000',
+      normalPrice: 'Rp199.000',
+      period: '/ bulan',
+      badge: 'PROMO 2 BULAN',
+      description: 'Untuk UMKM dan bisnis kecil.',
+      features: [
+        'Analytics media sosial',
+        'AI-powered insights',
+        'Laporan performa',
+        'Multi-platform analytics',
+      ],
+      button: 'Mulai dengan Starter',
     },
-
-    footer:
-      'Semua paket dapat digunakan untuk mengelola dan menganalisis performa media sosial dari satu dashboard.',
-  },
-
-  en: {
-    language: 'English',
-    otherLanguage: 'Indonesia',
-
-    headerBadge: 'SIMPLE PRICING FOR GROWING BUSINESSES',
-    title: (
-      <>
-        Choose the right plan
-        <br />
-        for your business.
-      </>
-    ),
-    subtitle:
-      'Manage, analyze, and understand your social media performance from one dashboard.',
-
-    promoTitle: '🎉 INTRODUCTORY OFFER',
-    promoMain: 'Promotional pricing applies for the first 2 months for every account.',
-    promoSub: 'After the promotional period ends, regular pricing will apply.',
-
-    popular: '⭐ MOST POPULAR',
-
-    featuresTitle: 'What you get:',
-    normalPrice: 'Regular price',
-
-    plans: {
-      starter: {
-        name: 'STARTER',
-        price: '$10',
-        normalPrice: '$15',
-        period: '/ month',
-        badge: '2-MONTH PROMO',
-        description: 'For small businesses and growing entrepreneurs.',
-        features: [
-          'Social media analytics',
-          'AI-powered insights',
-          'Performance reports',
-          'Multi-platform analytics',
-        ],
-        button: 'Start with Starter',
-      },
-
-      business: {
-        name: 'BUSINESS',
-        price: '$30',
-        normalPrice: '$50',
-        period: '/ month',
-        badge: 'LIMITED PROMO',
-        description: 'For growing businesses.',
-        features: [
-          'Everything in Starter',
-          'Advanced analytics',
-          'AI-powered business insights',
-          'Regular performance reports',
-          'Multi-platform analytics',
-        ],
-        button: 'Start with Business',
-      },
-
-      agency: {
-        name: 'AGENCY / ORGANIZATION',
-        price: '$100',
-        normalPrice: '$250+',
-        period: '/ month',
-        badge: 'CUSTOM PLAN',
-        description: 'For agencies and organizations.',
-        features: [
-          'Everything in Business',
-          'Multi-account management',
-          'Advanced analytics',
-          'Organization reports',
-          'Priority support',
-        ],
-        button: 'Contact Us',
-      },
+    {
+      id: 'business',
+      name: 'BUSINESS',
+      price: 'Rp499.000',
+      normalPrice: 'Rp699.000',
+      period: '/ bulan',
+      badge: 'PALING POPULER',
+      popular: true,
+      description: 'Untuk bisnis yang sedang berkembang.',
+      features: [
+        'Semua fitur Starter',
+        'Analytics lebih lengkap',
+        'AI-powered business insights',
+        'Laporan performa berkala',
+        'Multi-platform analytics',
+      ],
+      button: 'Mulai dengan Business',
     },
+    {
+      id: 'agency',
+      name: 'AGENCY / ORGANIZATION',
+      price: 'Rp1.500.000',
+      normalPrice: 'Rp2.500.000+',
+      period: '/ bulan',
+      badge: 'CUSTOM PLAN',
+      description: 'Untuk agency dan organisasi.',
+      features: [
+        'Semua fitur Business',
+        'Multi-account management',
+        'Advanced analytics',
+        'Laporan untuk organisasi',
+        'Dukungan prioritas',
+      ],
+      button: 'Hubungi Kami',
+    },
+  ],
 
-    footer:
-      'All plans allow you to manage and analyze your social media performance from one dashboard.',
-  },
+  en: [
+    {
+      id: 'starter',
+      name: 'STARTER',
+      price: '$10',
+      normalPrice: '$15',
+      period: '/ month',
+      badge: '2-MONTH PROMO',
+      description: 'For small businesses and startups.',
+      features: [
+        'Social media analytics',
+        'AI-powered insights',
+        'Performance reports',
+        'Multi-platform analytics',
+      ],
+      button: 'Start with Starter',
+    },
+    {
+      id: 'business',
+      name: 'BUSINESS',
+      price: '$30',
+      normalPrice: '$45',
+      period: '/ month',
+      badge: 'MOST POPULAR',
+      popular: true,
+      description: 'For growing businesses.',
+      features: [
+        'Everything in Starter',
+        'Advanced analytics',
+        'AI-powered business insights',
+        'Regular performance reports',
+        'Multi-platform analytics',
+      ],
+      button: 'Start with Business',
+    },
+    {
+      id: 'agency',
+      name: 'AGENCY / ORGANIZATION',
+      price: '$100',
+      normalPrice: '$250+',
+      period: '/ month',
+      badge: 'CUSTOM PLAN',
+      description: 'For agencies and organizations.',
+      features: [
+        'Everything in Business',
+        'Multi-account management',
+        'Advanced analytics',
+        'Organization reports',
+        'Priority support',
+      ],
+      button: 'Contact Us',
+    },
+  ],
 }
 
-const planIds = ['starter', 'business', 'agency']
+export default async function PricingPage({ searchParams }) {
+  const params = await searchParams
 
-export default function PricingPage() {
-  const [language, setLanguage] = useState('id')
+  const requestHeaders = await headers()
 
-  useEffect(() => {
-    const savedLanguage = localStorage.getItem('socialpulse-language')
+  const country = requestHeaders.get('x-vercel-ip-country')
 
-    if (savedLanguage === 'en' || savedLanguage === 'id') {
-      setLanguage(savedLanguage)
-    }
-  }, [])
+  /*
+   * Language priority:
+   *
+   * 1. ?lang=en or ?lang=id
+   * 2. Indonesia IP -> Indonesian
+   * 3. Other countries -> English
+   */
+  let isEnglish = true
 
-  function changeLanguage(newLanguage) {
-    setLanguage(newLanguage)
-    localStorage.setItem('socialpulse-language', newLanguage)
+  if (params?.lang === 'id') {
+    isEnglish = false
+  } else if (params?.lang === 'en') {
+    isEnglish = true
+  } else if (country === 'ID') {
+    isEnglish = false
   }
 
-  const t = translations[language]
+  const language = isEnglish ? 'en' : 'id'
+  const currentPlans = plans[language]
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
 
-      {/* HEADER / LANGUAGE SWITCHER */}
-      <div className="absolute right-6 top-6 z-20">
-        <div className="flex items-center rounded-full border border-slate-700 bg-slate-900/90 p-1 shadow-lg backdrop-blur">
+      {/* LANGUAGE SWITCHER */}
+      <div className="absolute right-6 top-6 z-20 flex gap-2">
+        <Link
+          href="/pricing?lang=id"
+          className={[
+            'rounded-lg px-3 py-2 text-xs font-bold transition',
+            !isEnglish
+              ? 'bg-white text-slate-950'
+              : 'border border-slate-700 text-slate-400 hover:bg-slate-800',
+          ].join(' ')}
+        >
+          Indonesia
+        </Link>
 
-          <button
-            type="button"
-            onClick={() => changeLanguage('id')}
-            className={[
-              'rounded-full px-4 py-2 text-xs font-bold transition',
-              language === 'id'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-white',
-            ].join(' ')}
-          >
-            🇮🇩 ID
-          </button>
-
-          <button
-            type="button"
-            onClick={() => changeLanguage('en')}
-            className={[
-              'rounded-full px-4 py-2 text-xs font-bold transition',
-              language === 'en'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-white',
-            ].join(' ')}
-          >
-            🇬🇧 EN
-          </button>
-
-        </div>
+        <Link
+          href="/pricing?lang=en"
+          className={[
+            'rounded-lg px-3 py-2 text-xs font-bold transition',
+            isEnglish
+              ? 'bg-white text-slate-950'
+              : 'border border-slate-700 text-slate-400 hover:bg-slate-800',
+          ].join(' ')}
+        >
+          English
+        </Link>
       </div>
 
       {/* HEADER */}
       <section className="px-6 pb-12 pt-24">
-
         <div className="mx-auto max-w-5xl text-center">
 
           <div className="mb-6 inline-flex rounded-full border border-blue-500/40 bg-blue-500/10 px-5 py-2 text-sm font-semibold text-blue-300">
-            {t.headerBadge}
+            {isEnglish
+              ? 'SIMPLE PRICING FOR GROWING BUSINESSES'
+              : 'HARGA SEDERHANA UNTUK BISNIS YANG BERKEMBANG'}
           </div>
 
           <h1 className="text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
-            {t.title}
+            {isEnglish ? (
+              <>
+                Choose the right plan
+                <br />
+                for your business.
+              </>
+            ) : (
+              <>
+                Pilih paket yang tepat
+                <br />
+                untuk bisnis Anda.
+              </>
+            )}
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-400">
-            {t.subtitle}
+            {isEnglish
+              ? 'Manage, analyze, and understand your social media performance in one powerful dashboard.'
+              : 'Kelola, analisis, dan pahami performa media sosial Anda dalam satu dashboard.'}
           </p>
 
         </div>
-
       </section>
 
       {/* PROMO */}
       <section className="px-6 pb-10">
-
         <div className="mx-auto max-w-6xl rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-950/80 to-indigo-950/80 px-6 py-7 text-center">
 
           <div className="text-sm font-bold tracking-wide text-blue-300">
-            {t.promoTitle}
+            🎉 {isEnglish ? 'INTRODUCTION PROMO' : 'PROMO PERKENALAN'}
           </div>
 
           <div className="mt-3 text-lg font-bold">
-            {t.promoMain}
+            {isEnglish
+              ? 'Promotional pricing is available for the first 2 months.'
+              : 'Harga promo berlaku selama 2 bulan untuk setiap akun.'}
           </div>
 
           <div className="mt-2 text-sm text-slate-400">
-            {t.promoSub}
+            {isEnglish
+              ? 'After the promotional period, regular pricing will apply.'
+              : 'Setelah masa promo berakhir, harga normal akan berlaku.'}
           </div>
 
         </div>
-
       </section>
 
       {/* PRICING CARDS */}
       <section className="px-6 pb-20">
-
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">
 
-          {planIds.map((planId) => {
-
-            const plan = t.plans[planId]
+          {currentPlans.map((plan) => {
 
             const href =
-              planId === 'agency'
+              plan.id === 'agency'
                 ? '/contact'
-                : `/register?plan=${planId}`
+                : `/register?plan=${plan.id}&lang=${language}`
 
             return (
               <div
-                key={planId}
+                key={plan.id}
                 className={[
                   'relative flex flex-col rounded-3xl border p-7',
-                  planId === 'business'
+                  plan.popular
                     ? 'border-blue-500 bg-gradient-to-b from-blue-950/80 to-slate-950 shadow-2xl shadow-blue-500/10'
                     : 'border-slate-800 bg-slate-900/60',
                 ].join(' ')}
               >
 
                 {/* POPULAR */}
-                {planId === 'business' && (
+                {plan.popular && (
                   <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 px-5 py-2 text-xs font-bold text-white shadow-lg">
-                    {t.popular}
+                    ⭐ {isEnglish ? 'MOST POPULAR' : 'PALING POPULER'}
                   </div>
                 )}
 
@@ -318,7 +278,6 @@ export default function PricingPage() {
                 <div className="mt-8">
 
                   <div className="flex items-end gap-2">
-
                     <span className="text-3xl font-black">
                       {plan.price}
                     </span>
@@ -326,11 +285,12 @@ export default function PricingPage() {
                     <span className="pb-1 text-sm text-slate-500">
                       {plan.period}
                     </span>
-
                   </div>
 
                   <div className="mt-2 text-sm text-slate-500">
-                    {t.normalPrice} {plan.normalPrice}
+                    {isEnglish
+                      ? `Regular price ${plan.normalPrice}`
+                      : `Harga normal ${plan.normalPrice}`}
                   </div>
 
                 </div>
@@ -339,18 +299,15 @@ export default function PricingPage() {
                 <div className="mt-8 flex-1">
 
                   <div className="mb-4 text-sm font-semibold text-slate-300">
-                    {t.featuresTitle}
+                    {isEnglish ? 'What you get:' : 'Yang Anda dapatkan:'}
                   </div>
 
                   <ul className="space-y-3">
-
                     {plan.features.map((feature) => (
-
                       <li
                         key={feature}
                         className="flex gap-3 text-sm text-slate-300"
                       >
-
                         <span className="text-emerald-400">
                           ✓
                         </span>
@@ -358,11 +315,8 @@ export default function PricingPage() {
                         <span>
                           {feature}
                         </span>
-
                       </li>
-
                     ))}
-
                   </ul>
 
                 </div>
@@ -372,7 +326,7 @@ export default function PricingPage() {
                   href={href}
                   className={[
                     'mt-10 block w-full rounded-xl px-5 py-4 text-center text-sm font-bold transition',
-                    planId === 'business'
+                    plan.popular
                       ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 hover:from-blue-500 hover:to-indigo-500'
                       : 'border border-slate-700 bg-white text-slate-950 hover:bg-slate-200',
                   ].join(' ')}
@@ -385,20 +339,37 @@ export default function PricingPage() {
           })}
 
         </div>
-
       </section>
 
-      {/* FOOTER NOTE */}
+      {/* FOOTER */}
       <section className="border-t border-slate-800 px-6 py-10">
-
         <div className="mx-auto max-w-4xl text-center">
 
           <p className="text-sm leading-6 text-slate-500">
-            {t.footer}
+            {isEnglish
+              ? 'All plans include access to social media analytics and performance insights from one dashboard.'
+              : 'Semua paket dapat digunakan untuk mengelola dan menganalisis performa media sosial dari satu dashboard.'}
           </p>
 
-        </div>
+          <div className="mt-6 flex justify-center gap-6 text-sm text-slate-500">
 
+            <Link
+              href={`/terms?lang=${language}`}
+              className="hover:text-white"
+            >
+              {isEnglish ? 'Terms & Conditions' : 'Syarat & Ketentuan'}
+            </Link>
+
+            <Link
+              href={`/privacy?lang=${language}`}
+              className="hover:text-white"
+            >
+              {isEnglish ? 'Privacy Policy' : 'Kebijakan Privasi'}
+            </Link>
+
+          </div>
+
+        </div>
       </section>
 
     </main>
