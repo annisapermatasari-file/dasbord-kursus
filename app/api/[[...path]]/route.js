@@ -478,8 +478,6 @@ async function createUser(request) {
   const col = await users()
   const now = new Date()
 
-  const businessName = String(body.businessName || '').trim()
-
 const doc = {
   name,
   businessName,

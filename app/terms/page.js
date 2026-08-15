@@ -260,7 +260,6 @@ export default function TermsPage() {
     </main>
   )
 }
-=======
 import Link from "next/link"
 import { useState } from "react"
 
@@ -457,4 +456,3 @@ export default function TermsPage() {
     </main>
   )
 }
->>>>>>> 09a0bf807a1e22e9d04ed3de03791e7dfd5be8f4
