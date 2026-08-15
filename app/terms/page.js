@@ -260,13 +260,7 @@ export default function TermsPage() {
     </main>
   )
 }
-import Link from "next/link"
-import { useState } from "react"
 
-export default function TermsPage() {
-  const [language, setLanguage] = useState("en")
-
-  const isEnglish = language === "en"
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
