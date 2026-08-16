@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { connections, users, db } from '@/lib/db'
+import { connections, db } from '@/lib/db'
+import {
+  findUserByEmail,
+  listUsers as listUsersRows,
+  countUsers,
+  countOtherActiveAdmins,
+  seedUsers,
+  upsertUser,
+  setUserActive,
+  deleteUserByEmail,
+  setResetCode,
+  updatePassword,
+} from '@/lib/users-repo'
 import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
 import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
@@ -128,10 +140,9 @@ export async function DELETE(request, { params }) {
     }
     if (path.startsWith('users/')) {
       const email = decodeURIComponent(path.slice('users/'.length))
-      const col = await users()
-      const err = await ensureNotLastActiveAdmin(col, email.toLowerCase())
+      const err = await ensureNotLastActiveAdmin(email.toLowerCase())
       if (err) return NextResponse.json({ error: err }, { status: 400 })
-      await col.deleteOne({ email: email.toLowerCase() })
+      await deleteUserByEmail(email.toLowerCase())
       await logActivity({ action:'user.delete', actor: request.headers.get('x-actor-email') || 'admin', target: email.toLowerCase(), status:'success', ...reqContext(request) })
       return NextResponse.json({ ok: true })
     }
@@ -412,27 +423,24 @@ const SEED_USERS = [
 let _seeded = false
 async function ensureSeeded() {
   if (_seeded) return
-  const col = await users()
-  const count = await col.countDocuments()
+  const count = await countUsers()
   if (count === 0) {
-    const now = new Date()
-    await col.insertMany(SEED_USERS.map(u => ({ ...u, initial: initialsOf(u.name), active: true, created_at: now, updated_at: now, seeded: true })))
+    await seedUsers(SEED_USERS.map(u => ({ ...u, initial: initialsOf(u.name) })))
   }
   _seeded = true
 }
 
-async function ensureNotLastActiveAdmin(col, email) {
-  const target = await col.findOne({ email })
+async function ensureNotLastActiveAdmin(email) {
+  const target = await findUserByEmail(email)
   if (!target || target.role !== 'Admin') return null
-  const otherActiveAdmins = await col.countDocuments({ role:'Admin', active: { $ne: false }, email: { $ne: email } })
+  const otherActiveAdmins = await countOtherActiveAdmins(email)
   if (otherActiveAdmins === 0) return 'Tidak dapat menghapus/menonaktifkan Admin terakhir. Tambah Admin lain terlebih dulu.'
   return null
 }
 
 async function listUsers() {
   await ensureSeeded()
-  const col = await users()
-  const docs = await col.find({}, { projection: { password: 0, reset_code: 0, reset_expires: 0 } }).sort({ created_at: 1 }).toArray()
+  const docs = await listUsersRows()
   return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
 }
 
@@ -468,8 +476,7 @@ async function createUser(request) {
     )
   }
 
-  const col = await users()
-  const existing = email ? await col.findOne({ email }) : null
+  const existing = email ? await findUserByEmail(email) : null
   const passwordValue = password || existing?.password || ''
 
   if (!existing && !passwordValue) {
@@ -486,8 +493,6 @@ async function createUser(request) {
     )
   }
 
-  const now = new Date()
-
   const doc = {
     name,
     businessName,
@@ -497,18 +502,10 @@ async function createUser(request) {
     jabatan,
     initial: initialsOf(name),
     active: existing?.active ?? true,
-    updated_at: now
   }
 
   try {
-    await col.updateOne(
-      { email },
-      {
-        $set: doc,
-        $setOnInsert: { created_at: now },
-      },
-      { upsert: true }
-    )
+    await upsertUser(doc)
 
     await logActivity({
       action: 'user.upsert',
@@ -554,8 +551,7 @@ async function authLogin(request) {
     await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
     return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
   }
-  const col = await users()
-  const doc = await col.findOne({ email })
+  const doc = await findUserByEmail(email)
   if (!doc || doc.password !== password) {
     await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
     return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
@@ -573,15 +569,14 @@ async function toggleUserStatus(request) {
   const email = String(body.email || '').trim().toLowerCase()
   const active = !!body.active
   if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
-  const col = await users()
-  const existing = await col.findOne({ email })
+  const existing = await findUserByEmail(email)
   if (!existing) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
   if (!active) {
-    const err = await ensureNotLastActiveAdmin(col, email)
+    const err = await ensureNotLastActiveAdmin(email)
     if (err) return NextResponse.json({ error: err }, { status: 400 })
   }
-  const r = await col.updateOne({ email }, { $set: { active, updated_at: new Date() } })
-  if (!r.matchedCount) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+  const updated = await setUserActive(email, active)
+  if (!updated) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
   await logActivity({
     action: 'user.status',
     actor: request.headers.get('x-actor-email') || 'admin',
@@ -601,8 +596,7 @@ async function forgotPassword(request) {
   const body = await request.json().catch(() => ({}))
   const email = String(body.email || '').trim().toLowerCase()
   if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
-  const col = await users()
-  const doc = await col.findOne({ email })
+  const doc = await findUserByEmail(email)
   if (!doc) {
     // Do not reveal user existence — return success but with a hint dev_code=null
     return NextResponse.json({ ok: true, message: 'Jika email terdaftar, kode verifikasi telah dikirim.', dev_code: null, delivery: 'demo' })
@@ -610,7 +604,7 @@ async function forgotPassword(request) {
   if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
   const code = generateResetCode()
   const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
-  await col.updateOne({ email }, { $set: { reset_code: code, reset_expires: expires, updated_at: new Date() } })
+  await setResetCode(email, code, expires)
   // Kirim email OTP via SMTP (nodemailer) jika terkonfigurasi
   let delivery = 'demo'
   let dev_code = code
@@ -640,11 +634,10 @@ async function resetPassword(request) {
   const newPassword = String(body.new_password || '')
   if (!email || !code || !newPassword) return NextResponse.json({ error: 'Email, kode, dan kata sandi baru wajib diisi' }, { status: 400 })
   if (newPassword.length < 6) return NextResponse.json({ error: 'Kata sandi baru minimal 6 karakter' }, { status: 400 })
-  const col = await users()
-  const doc = await col.findOne({ email })
+  const doc = await findUserByEmail(email)
   if (!doc || !doc.reset_code || doc.reset_code !== code) return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
   if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
-  await col.updateOne({ email }, { $set: { password: newPassword, updated_at: new Date() }, $unset: { reset_code: '', reset_expires: '' } })
+  await updatePassword(email, newPassword)
   return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
 }
 
