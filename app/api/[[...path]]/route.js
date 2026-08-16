@@ -447,9 +447,9 @@ async function createUser(request) {
   const jabatan = String(body.jabatan || '').trim()
   const plan = String(body.plan || 'starter').trim().toLowerCase()
 
-  if (!name || !email || !password || !role) {
+  if (!name || !email || !role) {
     return NextResponse.json(
-      { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
+      { error: 'Nama, email, dan peran wajib diisi' },
       { status: 400 }
     )
   }
@@ -468,27 +468,37 @@ async function createUser(request) {
     )
   }
 
-  if (password.length < 6) {
+  const col = await users()
+  const existing = email ? await col.findOne({ email }) : null
+  const passwordValue = password || existing?.password || ''
+
+  if (!existing && !passwordValue) {
+    return NextResponse.json(
+      { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
+      { status: 400 }
+    )
+  }
+
+  if (passwordValue && passwordValue.length < 6) {
     return NextResponse.json(
       { error: 'Kata sandi minimal 6 karakter' },
       { status: 400 }
     )
   }
 
-  const col = await users()
   const now = new Date()
 
-const doc = {
-  name,
-  businessName,
-  email,
-  password,
-  role,
-  jabatan,
-  initial: initialsOf(name),
-  active: true,
-  updated_at: now
-}
+  const doc = {
+    name,
+    businessName,
+    email,
+    password: passwordValue,
+    role,
+    jabatan,
+    initial: initialsOf(name),
+    active: existing?.active ?? true,
+    updated_at: now
+  }
 
   try {
     await col.updateOne(
@@ -564,12 +574,22 @@ async function toggleUserStatus(request) {
   const active = !!body.active
   if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
   const col = await users()
+  const existing = await col.findOne({ email })
+  if (!existing) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
   if (!active) {
     const err = await ensureNotLastActiveAdmin(col, email)
     if (err) return NextResponse.json({ error: err }, { status: 400 })
   }
   const r = await col.updateOne({ email }, { $set: { active, updated_at: new Date() } })
   if (!r.matchedCount) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+  await logActivity({
+    action: 'user.status',
+    actor: request.headers.get('x-actor-email') || 'admin',
+    target: email,
+    status: 'success',
+    meta: { active, role: existing.role, previousActive: existing.active !== false },
+    ...reqContext(request),
+  })
   return NextResponse.json({ ok: true, email, active })
 }
 

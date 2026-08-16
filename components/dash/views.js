@@ -1786,8 +1786,9 @@ function UsersRolesTab({ roles }) {
   async function submit(e) {
     e?.preventDefault?.()
     setError('')
-    if (!form.name || !form.email || !form.password || !form.role) { setError('Semua kolom wajib diisi'); return }
-    if (form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
+    if (!form.name || !form.email || !form.role) { setError('Nama, email, dan peran wajib diisi'); return }
+    if (!editing && !form.password) { setError('Kata sandi wajib diisi'); return }
+    if (form.password && form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
     try {
       const r = await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) })
       const j = await r.json()
