@@ -3,31 +3,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-
-const plans = {
-  starter: {
-    id: 'starter',
-    name: {
-      en: 'Starter',
-      id: 'Starter',
-    },
-    price: {
-      en: '$10/month',
-      id: 'Rp149.000/bulan',
-    },
-  },
-  business: {
-    id: 'business',
-    name: {
-      en: 'Business',
-      id: 'Business',
-    },
-    price: {
-      en: '$30/month',
-      id: 'Rp499.000/bulan',
-    },
-  },
-}
+import { PRICING_PLANS } from '@/lib/constants/pricing'
+import SiteHeader from '@/components/marketing/SiteHeader'
 
 export default function RegisterPage({ searchParams }) {
   const router = useRouter()
@@ -58,7 +35,7 @@ export default function RegisterPage({ searchParams }) {
 
   const isEnglish = language === 'en'
 
-  const selectedPlan = plans[planParam]
+  const selectedPlan = PRICING_PLANS[language].find((p) => p.id === planParam)
 
   const t = {
     en: {
@@ -184,14 +161,14 @@ export default function RegisterPage({ searchParams }) {
         headers: {
           'Content-Type': 'application/json',
         },
-       body: JSON.stringify({
-  name,
-  businessName,
-  email,
-  password,
-  role: 'Viewer',
-  plan: selectedPlan,
-}),
+        body: JSON.stringify({
+          name,
+          businessName,
+          email,
+          password,
+          role: 'Viewer',
+          plan: selectedPlan.id,
+        }),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -230,78 +207,55 @@ export default function RegisterPage({ searchParams }) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-12 text-white">
+    <main className="min-h-screen bg-white text-slate-900">
 
-      {/* TOP LANGUAGE */}
-      <div className="mx-auto mb-8 flex max-w-xl justify-end gap-2">
+      <SiteHeader lang={language} basePath="/register" extraQuery={`plan=${planParam}`} variant="minimal" />
 
-        <Link
-          href={`/register?plan=${planParam}&lang=id`}
-          className={[
-            'rounded-lg px-3 py-2 text-xs font-bold transition',
-            !isEnglish
-              ? 'bg-white text-slate-950'
-              : 'border border-slate-700 text-slate-400 hover:bg-slate-800',
-          ].join(' ')}
-        >
-          Indonesia
-        </Link>
-
-        <Link
-          href={`/register?plan=${planParam}&lang=en`}
-          className={[
-            'rounded-lg px-3 py-2 text-xs font-bold transition',
-            isEnglish
-              ? 'bg-white text-slate-950'
-              : 'border border-slate-700 text-slate-400 hover:bg-slate-800',
-          ].join(' ')}
-        >
-          English
-        </Link>
-
-      </div>
-
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-md px-6 py-14">
 
         {/* HEADER */}
         <div className="mb-8 text-center">
 
-          <div className="mb-5 inline-flex rounded-full border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-xs font-bold tracking-wide text-blue-300">
+          <div className="mb-4 inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold tracking-wide text-slate-600">
             {t.badge}
           </div>
 
-          <h1 className="text-4xl font-black sm:text-5xl">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             {t.title}
           </h1>
 
-          <p className="mt-4 leading-7 text-slate-400">
+          <p className="mt-3 text-sm leading-6 text-slate-500">
             {t.subtitle}
           </p>
 
         </div>
 
         {/* SELECTED PLAN */}
-        <div className="mb-6 rounded-2xl border border-blue-500/30 bg-blue-950/40 p-5">
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
 
-          <div className="text-xs font-semibold uppercase tracking-wide text-blue-300">
-            {t.selectedPlan}
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            <span>{t.selectedPlan}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 normal-case tracking-normal">
+              {selectedPlan.badge}
+            </span>
           </div>
 
           <div className="mt-2 flex items-center justify-between">
 
             <div>
-              <div className="text-xl font-bold">
-                {selectedPlan.name[language]}
+              <div className="text-lg font-semibold text-slate-900">
+                {selectedPlan.name}
               </div>
 
-              <div className="mt-1 text-sm text-slate-400">
-                {selectedPlan.price[language]}
+              <div className="mt-0.5 text-sm text-slate-500">
+                {selectedPlan.price}
+                <span className="text-slate-400">{selectedPlan.period}</span>
               </div>
             </div>
 
             <Link
               href={`/pricing?lang=${language}`}
-              className="text-sm font-semibold text-blue-400 hover:text-blue-300"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
             >
               {isEnglish ? 'Change' : 'Ubah'}
             </Link>
@@ -313,13 +267,13 @@ export default function RegisterPage({ searchParams }) {
         {/* FORM */}
         <form
           onSubmit={handleSubmit}
-          className="rounded-3xl border border-slate-800 bg-slate-900/70 p-7 shadow-2xl"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
         >
 
           {/* NAME */}
-          <div className="mb-5">
+          <div className="mb-4">
 
-            <label className="mb-2 block text-sm font-semibold text-slate-300">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
               {t.name}
             </label>
 
@@ -328,15 +282,15 @@ export default function RegisterPage({ searchParams }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t.namePlaceholder}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
             />
 
           </div>
 
           {/* BUSINESS */}
-          <div className="mb-5">
+          <div className="mb-4">
 
-            <label className="mb-2 block text-sm font-semibold text-slate-300">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
               {t.business}
             </label>
 
@@ -347,15 +301,15 @@ export default function RegisterPage({ searchParams }) {
                 setBusinessName(e.target.value)
               }
               placeholder={t.businessPlaceholder}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
             />
 
           </div>
 
           {/* EMAIL */}
-          <div className="mb-5">
+          <div className="mb-4">
 
-            <label className="mb-2 block text-sm font-semibold text-slate-300">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
               {t.email}
             </label>
 
@@ -365,15 +319,15 @@ export default function RegisterPage({ searchParams }) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t.emailPlaceholder}
               autoComplete="email"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
             />
 
           </div>
 
           {/* PASSWORD */}
-          <div className="mb-6">
+          <div className="mb-5">
 
-            <label className="mb-2 block text-sm font-semibold text-slate-300">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
               {t.password}
             </label>
 
@@ -383,19 +337,19 @@ export default function RegisterPage({ searchParams }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t.passwordPlaceholder}
               autoComplete="new-password"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
             />
 
           </div>
 
           {/* TERMS */}
-          <label className="mb-6 flex cursor-pointer gap-3 text-sm leading-6 text-slate-400">
+          <label className="mb-5 flex cursor-pointer gap-2.5 text-sm leading-6 text-slate-500">
 
             <input
               type="checkbox"
               checked={agree}
               onChange={(e) => setAgree(e.target.checked)}
-              className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
+              className="mt-1 h-4 w-4 shrink-0 accent-slate-900"
             />
 
             <span>
@@ -405,7 +359,7 @@ export default function RegisterPage({ searchParams }) {
                   <Link
                     href={`/terms?lang=en`}
                     target="_blank"
-                    className="font-semibold text-blue-400 hover:text-blue-300"
+                    className="font-semibold text-blue-600 hover:text-blue-700"
                   >
                     Terms & Conditions
                   </Link>{' '}
@@ -413,7 +367,7 @@ export default function RegisterPage({ searchParams }) {
                   <Link
                     href={`/privacy?lang=en`}
                     target="_blank"
-                    className="font-semibold text-blue-400 hover:text-blue-300"
+                    className="font-semibold text-blue-600 hover:text-blue-700"
                   >
                     Privacy Policy
                   </Link>
@@ -425,7 +379,7 @@ export default function RegisterPage({ searchParams }) {
                   <Link
                     href={`/terms?lang=id`}
                     target="_blank"
-                    className="font-semibold text-blue-400 hover:text-blue-300"
+                    className="font-semibold text-blue-600 hover:text-blue-700"
                   >
                     Syarat & Ketentuan
                   </Link>{' '}
@@ -433,7 +387,7 @@ export default function RegisterPage({ searchParams }) {
                   <Link
                     href={`/privacy?lang=id`}
                     target="_blank"
-                    className="font-semibold text-blue-400 hover:text-blue-300"
+                    className="font-semibold text-blue-600 hover:text-blue-700"
                   >
                     Kebijakan Privasi
                   </Link>
@@ -446,14 +400,14 @@ export default function RegisterPage({ searchParams }) {
 
           {/* ERROR */}
           {error && (
-            <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
               {error}
             </div>
           )}
 
           {/* SUCCESS */}
           {success && (
-            <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">
               {success}
             </div>
           )}
@@ -462,19 +416,19 @@ export default function RegisterPage({ searchParams }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:from-blue-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? t.creating : t.create}
           </button>
 
           {/* LOGIN */}
-          <div className="mt-6 text-center text-sm text-slate-500">
+          <div className="mt-5 text-center text-sm text-slate-500">
 
             {t.already}{' '}
 
             <Link
               href={`/login?lang=${language}`}
-              className="font-semibold text-blue-400 hover:text-blue-300"
+              className="font-semibold text-blue-600 hover:text-blue-700"
             >
               {t.login}
             </Link>
@@ -484,11 +438,11 @@ export default function RegisterPage({ searchParams }) {
         </form>
 
         {/* FOOTER */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
 
           <Link
             href={`/pricing?lang=${language}`}
-            className="text-sm text-slate-500 hover:text-white"
+            className="text-sm text-slate-400 hover:text-slate-700"
           >
             ← {isEnglish
               ? 'Back to Pricing'

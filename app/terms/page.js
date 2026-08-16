@@ -1,91 +1,45 @@
- 'use client'
-
 import Link from 'next/link'
-import { useState } from 'react'
+import SiteHeader from '@/components/marketing/SiteHeader'
+import SiteFooter from '@/components/marketing/SiteFooter'
 
-export default function TermsPage() {
-  const [language, setLanguage] = useState('en')
-
+export default async function TermsPage({ searchParams }) {
+  const params = await searchParams
+  const language = params?.lang === 'id' ? 'id' : 'en'
   const isEnglish = language === 'en'
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="min-h-screen bg-white text-slate-900">
 
-      {/* HEADER */}
-      <header className="border-b border-slate-800">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
-              📊
-            </div>
-
-            <div>
-              <div className="font-bold">SocialPulse</div>
-              <div className="text-[10px] uppercase tracking-widest text-blue-400">
-                Analytics Platform
-              </div>
-            </div>
-          </Link>
-
-          {/* LANGUAGE */}
-          <div className="flex rounded-full border border-slate-700 bg-slate-900 p-1">
-
-            <button
-              onClick={() => setLanguage('en')}
-              className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                isEnglish
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400'
-              }`}
-            >
-              🇬🇧 English
-            </button>
-
-            <button
-              onClick={() => setLanguage('id')}
-              className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                !isEnglish
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400'
-              }`}
-            >
-              🇮🇩 Indonesia
-            </button>
-
-          </div>
-
-        </div>
-      </header>
+      <SiteHeader lang={language} basePath="/terms" variant="full" />
 
       {/* CONTENT */}
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-3xl">
 
           <Link
-            href="/register"
-            className="text-sm text-blue-400 hover:text-blue-300"
+            href={`/register?lang=${language}`}
+            className="text-sm text-blue-600 hover:text-blue-700"
           >
             ← {isEnglish ? 'Back to registration' : 'Kembali ke registrasi'}
           </Link>
 
-          <h1 className="mt-8 text-4xl font-black">
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             {isEnglish
               ? 'Terms & Conditions'
               : 'Syarat & Ketentuan'}
           </h1>
 
-          <p className="mt-3 text-sm text-slate-500">
+          <p className="mt-3 text-sm text-slate-400">
             {isEnglish
               ? 'Last updated: August 15, 2026'
               : 'Terakhir diperbarui: 15 Agustus 2026'}
           </p>
 
-          <div className="mt-10 space-y-10 text-slate-300">
+          <div className="mt-10 space-y-8 text-slate-600">
 
             {/* 1 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '1. Acceptance of Terms'
                   : '1. Penerimaan Ketentuan'}
@@ -100,7 +54,7 @@ export default function TermsPage() {
 
             {/* 2 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '2. SocialPulse Service'
                   : '2. Layanan SocialPulse'}
@@ -115,7 +69,7 @@ export default function TermsPage() {
 
             {/* 3 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '3. Account Registration'
                   : '3. Pendaftaran Akun'}
@@ -130,7 +84,7 @@ export default function TermsPage() {
 
             {/* 4 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '4. Subscription Plans'
                   : '4. Paket Berlangganan'}
@@ -145,7 +99,7 @@ export default function TermsPage() {
 
             {/* 5 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '5. Promotional Pricing'
                   : '5. Harga Promosi'}
@@ -160,7 +114,7 @@ export default function TermsPage() {
 
             {/* 6 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '6. Social Media Connections'
                   : '6. Koneksi Media Sosial'}
@@ -175,7 +129,7 @@ export default function TermsPage() {
 
             {/* 7 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '7. Prohibited Use'
                   : '7. Penggunaan yang Dilarang'}
@@ -190,7 +144,7 @@ export default function TermsPage() {
 
             {/* 8 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '8. Service Availability'
                   : '8. Ketersediaan Layanan'}
@@ -205,7 +159,7 @@ export default function TermsPage() {
 
             {/* 9 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '9. Changes to These Terms'
                   : '9. Perubahan Ketentuan'}
@@ -220,7 +174,7 @@ export default function TermsPage() {
 
             {/* 10 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '10. Contact'
                   : '10. Kontak'}
@@ -238,24 +192,7 @@ export default function TermsPage() {
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-t border-slate-800 px-6 py-8">
-        <div className="mx-auto flex max-w-4xl justify-between text-sm text-slate-500">
-
-          <span>© 2026 SocialPulse</span>
-
-          <div className="flex gap-5">
-            <Link href="/privacy" className="hover:text-white">
-              {isEnglish ? 'Privacy Policy' : 'Kebijakan Privasi'}
-            </Link>
-
-            <Link href="/pricing" className="hover:text-white">
-              Pricing
-            </Link>
-          </div>
-
-        </div>
-      </footer>
+      <SiteFooter lang={language} />
 
     </main>
   )

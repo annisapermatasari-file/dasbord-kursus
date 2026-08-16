@@ -1,94 +1,45 @@
-'use client'
-
 import Link from 'next/link'
-import { useState } from 'react'
+import SiteHeader from '@/components/marketing/SiteHeader'
+import SiteFooter from '@/components/marketing/SiteFooter'
 
-export default function PrivacyPage() {
-  const [language, setLanguage] = useState('en')
-
+export default async function PrivacyPage({ searchParams }) {
+  const params = await searchParams
+  const language = params?.lang === 'id' ? 'id' : 'en'
   const isEnglish = language === 'en'
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main className="min-h-screen bg-white text-slate-900">
 
-      {/* HEADER */}
-      <header className="border-b border-slate-800">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
-              📊
-            </div>
-
-            <div>
-              <div className="font-bold">
-                SocialPulse
-              </div>
-
-              <div className="text-[10px] uppercase tracking-widest text-blue-400">
-                Analytics Platform
-              </div>
-            </div>
-          </Link>
-
-          {/* LANGUAGE */}
-          <div className="flex rounded-full border border-slate-700 bg-slate-900 p-1">
-
-            <button
-              onClick={() => setLanguage('en')}
-              className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                isEnglish
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400'
-              }`}
-            >
-              🇬🇧 English
-            </button>
-
-            <button
-              onClick={() => setLanguage('id')}
-              className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                !isEnglish
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400'
-              }`}
-            >
-              🇮🇩 Indonesia
-            </button>
-
-          </div>
-
-        </div>
-      </header>
+      <SiteHeader lang={language} basePath="/privacy" variant="full" />
 
       {/* CONTENT */}
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-3xl">
 
           <Link
-            href="/register"
-            className="text-sm text-blue-400 hover:text-blue-300"
+            href={`/register?lang=${language}`}
+            className="text-sm text-blue-600 hover:text-blue-700"
           >
             ← {isEnglish ? 'Back to registration' : 'Kembali ke registrasi'}
           </Link>
 
-          <h1 className="mt-8 text-4xl font-black">
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             {isEnglish
               ? 'Privacy Policy'
               : 'Kebijakan Privasi'}
           </h1>
 
-          <p className="mt-3 text-sm text-slate-500">
+          <p className="mt-3 text-sm text-slate-400">
             {isEnglish
               ? 'Last updated: August 15, 2026'
               : 'Terakhir diperbarui: 15 Agustus 2026'}
           </p>
 
-          <div className="mt-10 space-y-10 text-slate-300">
+          <div className="mt-10 space-y-8 text-slate-600">
 
             {/* 1 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '1. Introduction'
                   : '1. Pendahuluan'}
@@ -103,7 +54,7 @@ export default function PrivacyPage() {
 
             {/* 2 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '2. Information We Collect'
                   : '2. Informasi yang Kami Kumpulkan'}
@@ -118,7 +69,7 @@ export default function PrivacyPage() {
 
             {/* 3 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '3. Social Media Data'
                   : '3. Data Media Sosial'}
@@ -133,7 +84,7 @@ export default function PrivacyPage() {
 
             {/* 4 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '4. How We Use Information'
                   : '4. Bagaimana Kami Menggunakan Informasi'}
@@ -148,7 +99,7 @@ export default function PrivacyPage() {
 
             {/* 5 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '5. IP Address and Technical Information'
                   : '5. Alamat IP dan Informasi Teknis'}
@@ -163,7 +114,7 @@ export default function PrivacyPage() {
 
             {/* 6 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '6. Third-Party Services'
                   : '6. Layanan Pihak Ketiga'}
@@ -178,7 +129,7 @@ export default function PrivacyPage() {
 
             {/* 7 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '7. Data Security'
                   : '7. Keamanan Data'}
@@ -193,7 +144,7 @@ export default function PrivacyPage() {
 
             {/* 8 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '8. Data Retention'
                   : '8. Penyimpanan Data'}
@@ -208,7 +159,7 @@ export default function PrivacyPage() {
 
             {/* 9 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '9. Your Choices'
                   : '9. Pilihan Anda'}
@@ -223,7 +174,7 @@ export default function PrivacyPage() {
 
             {/* 10 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '10. Changes to This Privacy Policy'
                   : '10. Perubahan Kebijakan Privasi'}
@@ -238,7 +189,7 @@ export default function PrivacyPage() {
 
             {/* 11 */}
             <section>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {isEnglish
                   ? '11. Contact'
                   : '11. Kontak'}
@@ -256,24 +207,7 @@ export default function PrivacyPage() {
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-t border-slate-800 px-6 py-8">
-        <div className="mx-auto flex max-w-4xl justify-between text-sm text-slate-500">
-
-          <span>© 2026 SocialPulse</span>
-
-          <div className="flex gap-5">
-            <Link href="/terms" className="hover:text-white">
-              {isEnglish ? 'Terms & Conditions' : 'Syarat & Ketentuan'}
-            </Link>
-
-            <Link href="/pricing" className="hover:text-white">
-              Pricing
-            </Link>
-          </div>
-
-        </div>
-      </footer>
+      <SiteFooter lang={language} />
 
     </main>
   )
