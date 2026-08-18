@@ -501,6 +501,13 @@ async function createUser(request) {
 
     const plan = PLAN_ALLOWED.includes(planInput) ? planInput : (existing?.plan || 'starter')
 
+    if (plan !== 'agency' && role !== 'Admin') {
+      return NextResponse.json(
+        { error: 'Paket Starter & Business hanya mendukung peran Admin. Upgrade ke Agency untuk peran lain.' },
+        { status: 400 }
+      )
+    }
+
     const doc = {
       name,
       businessName,

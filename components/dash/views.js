@@ -1772,7 +1772,8 @@ function UsersRolesTab({ roles }) {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState(null)
-  const [form, setForm] = useState({ name:'', email:'', password:'', role:'Analyst', jabatan:'' })
+  const [form, setForm] = useState({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' })
+  const isAgency = form.plan === 'agency'
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
 
@@ -1790,11 +1791,12 @@ function UsersRolesTab({ roles }) {
     if (!editing && !form.password) { setError('Kata sandi wajib diisi'); return }
     if (form.password && form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
     try {
-      const r = await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) })
+      const payload = { ...form, role: isAgency ? form.role : 'Admin' }
+      const r = await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
       const j = await r.json()
       if (!r.ok) { setError(j.error || 'Gagal menyimpan'); return }
       setFlash({ ok:true, msg: editing ? `Pengguna ${form.name} diperbarui.` : `Pengguna ${form.name} ditambahkan.` })
-      setForm({ name:'', email:'', password:'', role:'Analyst', jabatan:'' })
+      setForm({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' })
       setEditing(false); load()
       setTimeout(()=>setFlash(null), 4000)
     } catch (err) { setError('Server error') }
@@ -1823,7 +1825,7 @@ function UsersRolesTab({ roles }) {
   }
 
   function editUser(u) {
-    setForm({ name: u.name, email: u.email, password: '', role: u.role, jabatan: u.jabatan || '' })
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, plan: u.plan || 'starter', jabatan: u.jabatan || '' })
     setEditing(true)
     setError('')
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1839,9 +1841,9 @@ function UsersRolesTab({ roles }) {
         </div>
       )}
       {/* Role definitions */}
-      <Card title="Definisi Peran" desc="Peran dan hak akses menu">
+      <Card title="Definisi Peran" desc={isAgency ? 'Peran dan hak akses menu' : 'Paket Starter & Business hanya mendukung peran Admin — upgrade ke Agency untuk peran tim lainnya'}>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {roles.map(r => <div key={r.name} className={`p-3 rounded-lg ring-1 ${r.color}`}><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background: ROLE_COLORS[r.name] }} /><div className="font-semibold">{r.name}</div></div><div className="text-xs opacity-90 mt-1">{r.desc}</div></div>)}
+          {(isAgency ? roles : roles.filter(r => r.name === 'Admin')).map(r => <div key={r.name} className={`p-3 rounded-lg ring-1 ${r.color}`}><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background: ROLE_COLORS[r.name] }} /><div className="font-semibold">{r.name}</div></div><div className="text-xs opacity-90 mt-1">{r.desc}</div></div>)}
         </div>
       </Card>
 
@@ -1862,10 +1864,22 @@ function UsersRolesTab({ roles }) {
             <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 6 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Peran</label>
-            <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-              {['Admin','Analyst','Executive','Viewer'].map(r=><option key={r} value={r}>{r}</option>)}
+            <label className="text-xs font-medium text-slate-600">Paket</label>
+            <select value={form.plan} onChange={e=>{ const plan=e.target.value; setForm(f=>({...f, plan, role: plan==='agency' ? f.role : 'Admin' })) }} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              {[['starter','Starter'],['business','Business'],['agency','Agency']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600">Peran</label>
+            {isAgency ? (
+              <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+                {['Admin','Analyst','Executive','Viewer'].map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+            ) : (
+              <div className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 text-slate-500">
+                Admin <span className="text-[10px] text-slate-400">(upgrade ke Agency untuk peran lain)</span>
+              </div>
+            )}
           </div>
           <div className="md:col-span-2">
             <label className="text-xs font-medium text-slate-600">Jabatan (opsional)</label>
@@ -1874,7 +1888,7 @@ function UsersRolesTab({ roles }) {
           {error && <div className="md:col-span-2 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
           <div className="md:col-span-2 flex items-center gap-2 pt-1">
             <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
-            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Analyst', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
+            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
             {flash && <span className={`ml-auto text-xs px-3 py-1.5 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-red-50 text-red-700 border border-red-200'}`}>{flash.msg}</span>}
           </div>
         </form>
@@ -1885,7 +1899,7 @@ function UsersRolesTab({ roles }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
-              <tr>{['Pengguna','Email','Peran','Jabatan','Status','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
+              <tr>{['Pengguna','Email','Peran','Paket','Jabatan','Status','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {allUsers.map(u => (
@@ -1900,6 +1914,7 @@ function UsersRolesTab({ roles }) {
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500 font-mono">{u.email}</td>
                   <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold text-white" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.role}</span></td>
+                  <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-700 capitalize">{u.plan || 'starter'}</span></td>
                   <td className="px-4 py-3 text-xs text-slate-600">{u.jabatan || '—'}</td>
                   <td className="px-4 py-3">
                     <button onClick={()=>toggleActive(u.email, u.active !== false)}
@@ -1918,7 +1933,7 @@ function UsersRolesTab({ roles }) {
                   </td>
                 </tr>
               ))}
-              {loading && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
+              {loading && <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
             </tbody>
           </table>
         </div>
