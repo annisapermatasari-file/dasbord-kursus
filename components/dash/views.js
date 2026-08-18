@@ -571,7 +571,7 @@ export function BestContentView({ days }) {
   const sortOptions = [ ['score','Performance Score'],['engagementRate','Engagement Rate'],['reach','Reach'],['views','Views'],['shares','Shares'],['saves','Saves'],['comments','Comments'] ]
   return (
     <div className="space-y-6">
-      <Card><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-slate-600 font-medium">Urutkan berdasarkan:</span>{sortOptions.map(([v,l])=><button key={v} onClick={()=>setSort(v)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${sort===v?'bg-[#0B2545] text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div></Card>
+      <Card><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-slate-600 font-medium">Urutkan berdasarkan:</span>{sortOptions.map(([v,l])=><button key={v} onClick={()=>setSort(v)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${sort===v?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div></Card>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {sorted.map((c,i)=>{ const cat = scoreCategory(c.score); return (
           <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition">
@@ -660,7 +660,7 @@ export function ReportsView({ days }) {
   }
   return (
     <div className="space-y-6">
-      <Card title="Pilih Jenis Laporan"><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">{REPORT_TYPES.map(rt => { const Ic = rt.i; return (<button key={rt.v} onClick={()=>setType(rt.v)} className={`p-4 rounded-xl border text-left transition ${type===rt.v?'border-blue-500 bg-blue-50 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><Ic className={`w-6 h-6 mb-2 ${type===rt.v?'text-blue-600':'text-slate-500'}`} /><div className={`text-sm font-semibold ${type===rt.v?'text-blue-900':'text-slate-800'}`}>{rt.l}</div></button>) })}</div><div className="flex gap-2 mt-5 flex-wrap"><button onClick={()=>setGenerated(true)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0B2545] text-white text-sm font-medium hover:bg-[#0e2f5c]"><Sparkles className="w-4 h-4" />Generate Report</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Printer className="w-4 h-4" />Print</button><button onClick={exportExcel} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export Excel/CSV</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export PDF</button></div></Card>
+      <Card title="Pilih Jenis Laporan"><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">{REPORT_TYPES.map(rt => { const Ic = rt.i; return (<button key={rt.v} onClick={()=>setType(rt.v)} className={`p-4 rounded-xl border text-left transition ${type===rt.v?'border-blue-500 bg-blue-50 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><Ic className={`w-6 h-6 mb-2 ${type===rt.v?'text-blue-600':'text-slate-500'}`} /><div className={`text-sm font-semibold ${type===rt.v?'text-blue-900':'text-slate-800'}`}>{rt.l}</div></button>) })}</div><div className="flex gap-2 mt-5 flex-wrap"><button onClick={()=>setGenerated(true)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"><Sparkles className="w-4 h-4" />Generate Report</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Printer className="w-4 h-4" />Print</button><button onClick={exportExcel} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export Excel/CSV</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export PDF</button></div></Card>
       {generated && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6 print:shadow-none print:border-0">
           <div className="border-b border-slate-200 pb-4">
@@ -772,7 +772,7 @@ export function SettingsView() {
           {flash.ok ? '✅' : '⚠️'} <strong>{flash.provider}:</strong> {flash.message}
         </div>
       )}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-[#0B2545] text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
 
       {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Direktorat"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
         <div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
@@ -942,7 +942,7 @@ export function SettingsView() {
       {tab==='activity' && <ActivityLogsTab />}
       {tab==='digest' && <WeeklyDigestTab />}
       {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
-      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm">Ganti Logo</button></div></div></Card>)}
+      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-slate-900 flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
   )
 }
@@ -1021,7 +1021,7 @@ export function ExecutiveSummaryView({ days }) {
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Hero */}
       <div className="rounded-3xl overflow-hidden shadow-xl border border-slate-200">
-        <div className="bg-gradient-to-br from-[#0B2545] via-[#123572] to-[#1D4ED8] text-white p-8">
+        <div className="bg-slate-900 text-white p-8">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200/80 font-semibold">Executive Summary · Untuk Pimpinan</div>
@@ -1071,7 +1071,7 @@ export function ExecutiveSummaryView({ days }) {
       </div>
 
       {/* AI Summary paragraphs */}
-      <Card title="Ringkasan AI untuk Pimpinan" desc="Analisis eksekutif maksimal 5 paragraf pendek — Bahasa Indonesia" right={<button onClick={runAI} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0B2545] text-white text-xs font-medium hover:bg-[#0e2f5c] disabled:opacity-60"><Sparkles className={`w-3.5 h-3.5 ${loading?'animate-pulse':''}`} />{loading?'Menganalisis…':'Generate AI Summary'}</button>}>
+      <Card title="Ringkasan AI untuk Pimpinan" desc="Analisis eksekutif maksimal 5 paragraf pendek — Bahasa Indonesia" right={<button onClick={runAI} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 disabled:opacity-60"><Sparkles className={`w-3.5 h-3.5 ${loading?'animate-pulse':''}`} />{loading?'Menganalisis…':'Generate AI Summary'}</button>}>
         {!aiSummary && <p className="text-sm text-slate-500 italic">Klik tombol "Generate AI Summary" untuk memperoleh ringkasan naratif berbasis LLM (Claude Sonnet 4.5) untuk keperluan pimpinan.</p>}
         {aiSummary && <div className="space-y-3">{aiSummary.map((p,i)=>(<p key={i} className="text-sm text-slate-700 leading-relaxed">{p}</p>))}</div>}
       </Card>
@@ -1190,7 +1190,7 @@ export function ContentCalendarView() {
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Scheduled.dot }} />Terjadwal: <strong>{stats.scheduled}</strong></span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Published.dot }} />Terbit: <strong>{stats.published}</strong></span>
           </div>
-          <button onClick={()=>setModal({ date: today.toISOString().slice(0,10) })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0B2545] text-white text-sm font-medium hover:bg-[#0e2f5c]">+ Konten Baru</button>
+          <button onClick={()=>setModal({ date: today.toISOString().slice(0,10) })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">+ Konten Baru</button>
         </div>
       </Card>
 
@@ -1451,7 +1451,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
         <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-2">
           {it && <button onClick={()=>onDelete(it.id)} className="mr-auto text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">🗑 Hapus</button>}
           <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50">Batal</button>
-          <button onClick={()=>form.title && onSave(form)} disabled={!form.title} className="text-sm px-4 py-2 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-50">Simpan</button>
+          <button onClick={()=>form.title && onSave(form)} disabled={!form.title} className="text-sm px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50">Simpan</button>
         </div>
       </div>
     </div>
@@ -1655,7 +1655,7 @@ export function ComparePeriodView({ days }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-[#0B2545] to-blue-900 text-white p-5 flex items-center justify-between gap-4 flex-wrap">
+      <div className="rounded-2xl bg-slate-900 text-white p-5 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="text-[10px] uppercase tracking-widest text-blue-200/80 font-semibold">Compare Periode · Side-by-Side</div>
           <h2 className="text-lg font-bold mt-1">Periode Ini vs Periode Sebelumnya</h2>
@@ -1873,7 +1873,7 @@ function UsersRolesTab({ roles }) {
           </div>
           {error && <div className="md:col-span-2 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
           <div className="md:col-span-2 flex items-center gap-2 pt-1">
-            <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0B2545] text-white text-sm font-medium hover:bg-[#0e2f5c]">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
+            <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
             {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Analyst', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
             {flash && <span className={`ml-auto text-xs px-3 py-1.5 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-red-50 text-red-700 border border-red-200'}`}>{flash.msg}</span>}
           </div>
@@ -2172,7 +2172,7 @@ function WeeklyDigestTab() {
                 <textarea value={customEmails} onChange={e=>setCustomEmails(e.target.value)} rows={3} placeholder="satu email per baris" className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none font-mono" />
               )}
             </div>
-            <button onClick={saveSettings} disabled={busy==='save'} className="text-sm px-4 py-2 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-50 font-medium">{busy==='save'?'Menyimpan…':'💾 Simpan Pengaturan'}</button>
+            <button onClick={saveSettings} disabled={busy==='save'} className="text-sm px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 font-medium">{busy==='save'?'Menyimpan…':'💾 Simpan Pengaturan'}</button>
           </div>
 
           <div className="space-y-4">
@@ -2284,7 +2284,7 @@ function ImpactStatsTab() {
       <Card
         title="Statistik Dampak Direktorat"
         desc={updatedAt ? `Terakhir diperbarui: ${new Date(updatedAt).toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' })}` : 'Belum ada perubahan'}
-        right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-[#0B2545] text-white hover:bg-[#0e2f5c] disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
+        right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
       >
         <div className="space-y-3">
           {stats.map((s, i) => (
@@ -2317,7 +2317,7 @@ function ImpactStatsTab() {
 
       {/* Live preview */}
       <Card title="Pratinjau di Halaman Login" desc="Tampilan akhir yang akan dilihat pengunjung">
-        <div className="rounded-2xl bg-gradient-to-br from-[#0B2545] via-[#0B2545] to-[#1D4ED8] p-5 text-white">
+        <div className="rounded-2xl bg-slate-900 p-5 text-white">
           <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {stats.map((s, i) => (

@@ -19,7 +19,7 @@ export function PeriodFilter({ value, onChange }) {
       {PERIODS.map(p => (
         <button key={p.key} onClick={() => onChange(p.key)}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition
-            ${value === p.key ? 'bg-[#0B2545] text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}>
+            ${value === p.key ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}>
           {p.label}
         </button>
       ))}
@@ -114,7 +114,7 @@ export function AIInsightsPanel({ context, scope='overview', fallback }) {
   }
 
   return (
-    <div className="rounded-2xl border border-blue-200/60 bg-gradient-to-br from-[#0B2545] via-[#0B2545] to-[#123572] text-white shadow-lg overflow-hidden">
+    <div className="rounded-2xl border border-blue-200/60 bg-slate-900 text-white shadow-lg overflow-hidden">
       <div className="p-5 flex items-center justify-between border-b border-white/10 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center ring-1 ring-white/15">
