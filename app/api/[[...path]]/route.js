@@ -411,6 +411,7 @@ function summarizeGa4(report) {
 
 /* ============ USERS ============ */
 const ROLE_ALLOWED = ['Admin','Analyst','Executive','Viewer']
+const PLAN_ALLOWED = ['starter','business','agency']
 
 function initialsOf(name) { return (name||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '??' }
 
@@ -442,7 +443,7 @@ async function listUsers() {
   try {
     await ensureSeeded()
     const docs = await listUsersRows()
-    return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
+    return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, plan: d.plan || 'starter', jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal memuat daftar user' }, { status: 500 })
   }
@@ -457,7 +458,7 @@ async function createUser(request) {
   const password = String(body.password || '')
   const role = String(body.role || 'Viewer').trim()
   const jabatan = String(body.jabatan || '').trim()
-  const plan = String(body.plan || 'starter').trim().toLowerCase()
+  const planInput = body.plan ? String(body.plan).trim().toLowerCase() : ''
 
   if (!name || !email || !role) {
     return NextResponse.json(
@@ -498,12 +499,15 @@ async function createUser(request) {
       )
     }
 
+    const plan = PLAN_ALLOWED.includes(planInput) ? planInput : (existing?.plan || 'starter')
+
     const doc = {
       name,
       businessName,
       email,
       password: passwordValue,
       role,
+      plan,
       jabatan,
       initial: initialsOf(name),
       active: existing?.active ?? true,
@@ -566,7 +570,7 @@ async function authLogin(request) {
       return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
     }
     await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
-    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
+    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, plan: doc.plan || 'starter', jabatan: doc.jabatan, initial: doc.initial } })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal memproses login' }, { status: 500 })
   }

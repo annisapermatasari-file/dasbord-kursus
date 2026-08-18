@@ -44,6 +44,13 @@ const ROLES = {
   Viewer:   { color:'#64748B', desc:'Melihat dashboard performa dasar saja', allow: ['overview','social','instagram','facebook','youtube','tiktok','website'] },
 }
 
+// Fitur yang tersedia per paket berlangganan — dikombinasikan dengan hak akses role.
+const PLANS = {
+  starter:  { label:'Starter',  allow: ['overview','social','instagram','facebook','youtube','tiktok','website','content','settings'] },
+  business: { label:'Business', allow: ['overview','social','instagram','facebook','youtube','tiktok','website','content','settings','audience','engagement','sentiment','campaign','best','calendar','compare','recommend','reports','executive'] },
+  agency:   { label:'Agency',   allow: '*' },
+}
+
 const PRESET_USERS = [
   { name:'Annisa Permatasari', role:'Admin',     initial:'AP', jabatan:'Kepala Sub-Bagian Humas',            email:'annisa.permatasari@dikdasmen.belajar.id', password:'Admin@2026' },
   { name:'Rina Setiawati',     role:'Analyst',   initial:'RS', jabatan:'Analis Komunikasi Digital',          email:'rina.setiawati@dikdasmen.belajar.id',     password:'Analyst@2026' },
@@ -51,9 +58,12 @@ const PRESET_USERS = [
   { name:'Dewi Rahayu',        role:'Viewer',    initial:'DR', jabatan:'Staf Publikasi',                     email:'dewi.rahayu@dikdasmen.belajar.id',        password:'Viewer@2026' },
 ]
 
-function hasAccess(role, key) {
+function hasAccess(role, plan, key) {
   const r = ROLES[role]; if (!r) return false
-  return r.allow === '*' || r.allow.includes(key)
+  const roleOk = r.allow === '*' || r.allow.includes(key)
+  const p = PLANS[plan] || PLANS.starter
+  const planOk = p.allow === '*' || p.allow.includes(key)
+  return roleOk && planOk
 }
 
 export default function App({ searchParams }) {
@@ -74,7 +84,7 @@ export default function App({ searchParams }) {
   if (!user) return <LandingScreen searchParams={searchParams} />
 
   const days = (PERIODS.find(p => p.key === period) || PERIODS[2]).days
-  const visibleMenu = MENU.filter(m => hasAccess(user.role, m.key))
+  const visibleMenu = MENU.filter(m => hasAccess(user.role, user.plan, m.key))
   const current = visibleMenu.find(m => m.key === active) || visibleMenu[0]
   const activeKey = current?.key || 'overview'
 
@@ -82,16 +92,18 @@ export default function App({ searchParams }) {
 
   return (
     <div className="min-h-screen flex bg-slate-50 print:bg-white">
-      <aside className={`${collapsed ? 'w-[76px]' : 'w-[268px]'} transition-all duration-300 shrink-0 bg-[#0B2545] text-slate-100 flex flex-col sticky top-0 h-screen print:hidden`}>
+      <aside className={`${collapsed ? 'w-[76px]' : 'w-[268px]'} transition-all duration-300 shrink-0 bg-slate-900 text-slate-100 flex flex-col sticky top-0 h-screen print:hidden`}>
         <div className="px-4 py-5 flex items-center gap-3 border-b border-white/10">
-          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/15"><ShieldCheck className="w-6 h-6 text-white" /></div>
-          {!collapsed && <div className="min-w-0"><div className="text-[11px] uppercase tracking-wider text-blue-200/80">Direktorat</div><div className="text-sm font-semibold leading-tight truncate">Kursus &amp; Pelatihan</div></div>}
+          <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-[18px] h-[18px]"><path d="M4 16.5 9.5 11l4 3L20 6" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M14.5 6H20v5.5" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
+          {!collapsed && <div className="min-w-0 text-sm font-semibold leading-tight truncate">SocialPulse</div>}
         </div>
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
           {visibleMenu.map(m => { const Icon = m.icon; const isActive = activeKey === m.key; return (
             <button key={m.key} onClick={() => setActive(m.key)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all
-                ${isActive ? 'bg-blue-500/95 text-white shadow-lg shadow-blue-900/30' : 'text-slate-200/85 hover:bg-white/5'}
+                ${isActive ? 'bg-blue-600 text-white' : 'text-slate-200/85 hover:bg-white/5'}
                 ${m.highlight && !isActive ? 'ring-1 ring-amber-400/30 bg-amber-500/5' : ''}`} title={m.label}>
               <Icon className={`w-[18px] h-[18px] shrink-0 ${m.highlight && !isActive ? 'text-amber-300' : ''}`} />
               {!collapsed && <span className="truncate text-left flex-1">{m.label}</span>}
@@ -124,9 +136,9 @@ export default function App({ searchParams }) {
         <header className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5 print:hidden">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center ring-1 ring-slate-200 shadow-sm"><ShieldCheck className="w-7 h-7 text-white" /></div>
+              <div className="w-14 h-14 rounded-xl bg-slate-900 flex items-center justify-center ring-1 ring-slate-200 shadow-sm"><ShieldCheck className="w-7 h-7 text-white" /></div>
               <div>
-                <h1 className="text-[22px] leading-tight font-bold text-slate-900 tracking-tight">Dashboard Media Sosial Direktorat Kursus dan Pelatihan</h1>
+                <h1 className="text-[22px] leading-tight font-bold text-slate-900 tracking-tight">SocialPulse Dashboard</h1>
                 <p className="text-sm text-slate-500 mt-1">Monitoring, Analisis, dan Evaluasi Komunikasi Digital &middot; <span className="italic">Data-driven Communication for Education</span></p>
               </div>
             </div>
@@ -136,7 +148,7 @@ export default function App({ searchParams }) {
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Connected · Mock Data</div>
               <div className="text-xs text-slate-500 hidden md:block"><div>Terakhir diperbarui</div><div className="font-medium text-slate-700">{lastUpdated ? lastUpdated.toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' }) : '—'}</div></div>
-              <button onClick={handleRefresh} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#0B2545] text-white text-sm hover:bg-[#0e2f5c]"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh Data</button>
+              <button onClick={handleRefresh} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 text-white text-sm hover:bg-slate-800"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh Data</button>
             </div>
           </div>
         </header>
@@ -169,7 +181,7 @@ export default function App({ searchParams }) {
           {activeKey==='reports' && <ReportsView days={days} />}
           {activeKey==='settings' && <SettingsView />}
 
-          <footer className="pt-6 pb-2 text-center text-xs text-slate-400 print:hidden">© {new Date().getFullYear()} Direktorat Kursus dan Pelatihan — Kementerian Pendidikan Dasar dan Menengah</footer>
+          <footer className="pt-6 pb-2 text-center text-xs text-slate-400 print:hidden">© {new Date().getFullYear()} SocialPulse</footer>
         </div>
 
         <PrintFooter user={user} />

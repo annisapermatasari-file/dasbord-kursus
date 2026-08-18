@@ -166,7 +166,7 @@ export default function RegisterPage({ searchParams }) {
           businessName,
           email,
           password,
-          role: 'Viewer',
+          role: 'Admin',
           plan: selectedPlan.id,
         }),
       })
