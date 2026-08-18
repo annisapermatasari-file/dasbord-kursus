@@ -439,9 +439,13 @@ async function ensureNotLastActiveAdmin(email) {
 }
 
 async function listUsers() {
-  await ensureSeeded()
-  const docs = await listUsersRows()
-  return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
+  try {
+    await ensureSeeded()
+    const docs = await listUsersRows()
+    return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal memuat daftar user' }, { status: 500 })
+  }
 }
 
 async function createUser(request) {
@@ -476,35 +480,35 @@ async function createUser(request) {
     )
   }
 
-  const existing = email ? await findUserByEmail(email) : null
-  const passwordValue = password || existing?.password || ''
-
-  if (!existing && !passwordValue) {
-    return NextResponse.json(
-      { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
-      { status: 400 }
-    )
-  }
-
-  if (passwordValue && passwordValue.length < 6) {
-    return NextResponse.json(
-      { error: 'Kata sandi minimal 6 karakter' },
-      { status: 400 }
-    )
-  }
-
-  const doc = {
-    name,
-    businessName,
-    email,
-    password: passwordValue,
-    role,
-    jabatan,
-    initial: initialsOf(name),
-    active: existing?.active ?? true,
-  }
-
   try {
+    const existing = email ? await findUserByEmail(email) : null
+    const passwordValue = password || existing?.password || ''
+
+    if (!existing && !passwordValue) {
+      return NextResponse.json(
+        { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
+        { status: 400 }
+      )
+    }
+
+    if (passwordValue && passwordValue.length < 6) {
+      return NextResponse.json(
+        { error: 'Kata sandi minimal 6 karakter' },
+        { status: 400 }
+      )
+    }
+
+    const doc = {
+      name,
+      businessName,
+      email,
+      password: passwordValue,
+      role,
+      jabatan,
+      initial: initialsOf(name),
+      active: existing?.active ?? true,
+    }
+
     await upsertUser(doc)
 
     await logActivity({
@@ -542,50 +546,58 @@ async function createUser(request) {
 }
 
 async function authLogin(request) {
-  await ensureSeeded()
-  const body = await request.json().catch(() => ({}))
-  const email = String(body.email || '').trim().toLowerCase()
-  const password = String(body.password || '')
-  const ctx = reqContext(request)
-  if (!email || !password) {
-    await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
-    return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
+  try {
+    await ensureSeeded()
+    const body = await request.json().catch(() => ({}))
+    const email = String(body.email || '').trim().toLowerCase()
+    const password = String(body.password || '')
+    const ctx = reqContext(request)
+    if (!email || !password) {
+      await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
+      return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
+    }
+    const doc = await findUserByEmail(email)
+    if (!doc || doc.password !== password) {
+      await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
+      return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
+    }
+    if (doc.active === false) {
+      await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason:'inactive' }, ...ctx })
+      return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+    }
+    await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
+    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal memproses login' }, { status: 500 })
   }
-  const doc = await findUserByEmail(email)
-  if (!doc || doc.password !== password) {
-    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
-    return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
-  }
-  if (doc.active === false) {
-    await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason:'inactive' }, ...ctx })
-    return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
-  }
-  await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
-  return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, jabatan: doc.jabatan, initial: doc.initial } })
 }
 
 async function toggleUserStatus(request) {
-  const body = await request.json().catch(() => ({}))
-  const email = String(body.email || '').trim().toLowerCase()
-  const active = !!body.active
-  if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
-  const existing = await findUserByEmail(email)
-  if (!existing) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
-  if (!active) {
-    const err = await ensureNotLastActiveAdmin(email)
-    if (err) return NextResponse.json({ error: err }, { status: 400 })
+  try {
+    const body = await request.json().catch(() => ({}))
+    const email = String(body.email || '').trim().toLowerCase()
+    const active = !!body.active
+    if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
+    const existing = await findUserByEmail(email)
+    if (!existing) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+    if (!active) {
+      const err = await ensureNotLastActiveAdmin(email)
+      if (err) return NextResponse.json({ error: err }, { status: 400 })
+    }
+    const updated = await setUserActive(email, active)
+    if (!updated) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+    await logActivity({
+      action: 'user.status',
+      actor: request.headers.get('x-actor-email') || 'admin',
+      target: email,
+      status: 'success',
+      meta: { active, role: existing.role, previousActive: existing.active !== false },
+      ...reqContext(request),
+    })
+    return NextResponse.json({ ok: true, email, active })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal mengubah status user' }, { status: 500 })
   }
-  const updated = await setUserActive(email, active)
-  if (!updated) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
-  await logActivity({
-    action: 'user.status',
-    actor: request.headers.get('x-actor-email') || 'admin',
-    target: email,
-    status: 'success',
-    meta: { active, role: existing.role, previousActive: existing.active !== false },
-    ...reqContext(request),
-  })
-  return NextResponse.json({ ok: true, email, active })
 }
 
 function generateResetCode() {
@@ -593,52 +605,60 @@ function generateResetCode() {
 }
 
 async function forgotPassword(request) {
-  const body = await request.json().catch(() => ({}))
-  const email = String(body.email || '').trim().toLowerCase()
-  if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
-  const doc = await findUserByEmail(email)
-  if (!doc) {
-    // Do not reveal user existence — return success but with a hint dev_code=null
-    return NextResponse.json({ ok: true, message: 'Jika email terdaftar, kode verifikasi telah dikirim.', dev_code: null, delivery: 'demo' })
+  try {
+    const body = await request.json().catch(() => ({}))
+    const email = String(body.email || '').trim().toLowerCase()
+    if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
+    const doc = await findUserByEmail(email)
+    if (!doc) {
+      // Do not reveal user existence — return success but with a hint dev_code=null
+      return NextResponse.json({ ok: true, message: 'Jika email terdaftar, kode verifikasi telah dikirim.', dev_code: null, delivery: 'demo' })
+    }
+    if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
+    const code = generateResetCode()
+    const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
+    await setResetCode(email, code, expires)
+    // Kirim email OTP via SMTP (nodemailer) jika terkonfigurasi
+    let delivery = 'demo'
+    let dev_code = code
+    let email_error = null
+    if (hasSmtp()) {
+      const tpl = otpEmail({ code, expiresMinutes: 15, name: doc.name || '' })
+      const result = await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text })
+      if (result.ok) { delivery = 'email'; dev_code = null }
+      else { email_error = result.error || 'SMTP gagal' }
+    }
+    return NextResponse.json({
+      ok: true,
+      message: delivery === 'email'
+        ? `Kode verifikasi telah dikirim ke ${email.replace(/^(.{2}).*@/, '$1***@')}. Cek inbox/spam. Berlaku 15 menit.`
+        : 'Kode verifikasi telah dibuat. Berlaku 15 menit.',
+      dev_code,
+      delivery,
+      email_error,
+      masked_email: email.replace(/^(.{2}).*@/, '$1***@'),
+    })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal memproses permintaan reset kata sandi' }, { status: 500 })
   }
-  if (doc.active === false) return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
-  const code = generateResetCode()
-  const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
-  await setResetCode(email, code, expires)
-  // Kirim email OTP via SMTP (nodemailer) jika terkonfigurasi
-  let delivery = 'demo'
-  let dev_code = code
-  let email_error = null
-  if (hasSmtp()) {
-    const tpl = otpEmail({ code, expiresMinutes: 15, name: doc.name || '' })
-    const result = await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text })
-    if (result.ok) { delivery = 'email'; dev_code = null }
-    else { email_error = result.error || 'SMTP gagal' }
-  }
-  return NextResponse.json({
-    ok: true,
-    message: delivery === 'email'
-      ? `Kode verifikasi telah dikirim ke ${email.replace(/^(.{2}).*@/, '$1***@')}. Cek inbox/spam. Berlaku 15 menit.`
-      : 'Kode verifikasi telah dibuat. Berlaku 15 menit.',
-    dev_code,
-    delivery,
-    email_error,
-    masked_email: email.replace(/^(.{2}).*@/, '$1***@'),
-  })
 }
 
 async function resetPassword(request) {
-  const body = await request.json().catch(() => ({}))
-  const email = String(body.email || '').trim().toLowerCase()
-  const code = String(body.code || '').trim()
-  const newPassword = String(body.new_password || '')
-  if (!email || !code || !newPassword) return NextResponse.json({ error: 'Email, kode, dan kata sandi baru wajib diisi' }, { status: 400 })
-  if (newPassword.length < 6) return NextResponse.json({ error: 'Kata sandi baru minimal 6 karakter' }, { status: 400 })
-  const doc = await findUserByEmail(email)
-  if (!doc || !doc.reset_code || doc.reset_code !== code) return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
-  if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
-  await updatePassword(email, newPassword)
-  return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
+  try {
+    const body = await request.json().catch(() => ({}))
+    const email = String(body.email || '').trim().toLowerCase()
+    const code = String(body.code || '').trim()
+    const newPassword = String(body.new_password || '')
+    if (!email || !code || !newPassword) return NextResponse.json({ error: 'Email, kode, dan kata sandi baru wajib diisi' }, { status: 400 })
+    if (newPassword.length < 6) return NextResponse.json({ error: 'Kata sandi baru minimal 6 karakter' }, { status: 400 })
+    const doc = await findUserByEmail(email)
+    if (!doc || !doc.reset_code || doc.reset_code !== code) return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
+    if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
+    await updatePassword(email, newPassword)
+    return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || 'Gagal reset kata sandi' }, { status: 500 })
+  }
 }
 
 /* ============ IMPACT STATS ============ */
