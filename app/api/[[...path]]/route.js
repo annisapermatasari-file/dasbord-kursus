@@ -31,6 +31,31 @@ function metaRedirect(request) { return baseUrl(request) + '/api/oauth/meta/call
 function googleRedirect(request) { return baseUrl(request) + '/api/oauth/google/callback' }
 function tiktokRedirect(request) { return baseUrl(request) + '/api/oauth/tiktok/callback' }
 
+/**
+ * Resolusi workspace (owner_email) dari header `x-actor-email` yang dikirim
+ * frontend (lihat apiFetch di components/dash/shared.js). Setiap workspace
+ * = 1 Admin yang self-register + tim yang ia undang, jadi semua user & data
+ * medsos milik workspace itu dikelompokkan lewat email si Admin.
+ */
+async function actorWorkspace(request) {
+  const email = String(request.headers.get('x-actor-email') || '').trim().toLowerCase()
+  if (!email) return null
+  const actor = await findUserByEmail(email)
+  if (!actor) return null
+  return actor.orgOwnerEmail || actor.email
+}
+
+/** Encode identitas workspace ke dalam OAuth `state` supaya bisa dibaca lagi di callback. */
+function encodeOauthState(owner) {
+  return Buffer.from(JSON.stringify({ owner: owner || '', nonce: randomUUID() })).toString('base64url')
+}
+function decodeOauthState(state) {
+  try {
+    const parsed = JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8'))
+    return parsed?.owner || ''
+  } catch { return '' }
+}
+
 function popupResponse({ ok, provider, message }) {
   const isRedirectErr = message && /redirect|whitelist|redirect_uri|not.*allowed|url.*blocked/i.test(message)
   const helpHtml = isRedirectErr ? `
@@ -57,24 +82,27 @@ export async function GET(request, { params }) {
     if (path === '' || path === 'health') return NextResponse.json({ status: 'ok' })
 
     if (path === 'oauth/meta/start') {
-      const state = randomUUID()
+      const owner = new URL(request.url).searchParams.get('owner') || ''
+      const state = encodeOauthState(owner)
       return NextResponse.redirect(metaAuthUrl(metaRedirect(request), state))
     }
     if (path === 'oauth/google/start') {
-      const state = randomUUID()
+      const owner = new URL(request.url).searchParams.get('owner') || ''
+      const state = encodeOauthState(owner)
       return NextResponse.redirect(googleAuthUrl(googleRedirect(request), state))
     }
     if (path === 'oauth/tiktok/start') {
       if (!hasTiktokCreds()) return new NextResponse('<html><body style="font-family:system-ui;padding:40px"><h2 style="color:#DC2626">TikTok credentials belum diset</h2><p>Admin belum mengisi TIKTOK_CLIENT_KEY dan TIKTOK_CLIENT_SECRET pada environment variables server.</p></body></html>', { status: 400, headers:{'Content-Type':'text/html'} })
-      const state = randomUUID()
+      const owner = new URL(request.url).searchParams.get('owner') || ''
+      const state = encodeOauthState(owner)
       return NextResponse.redirect(tiktokAuthUrl(tiktokRedirect(request), state))
     }
     if (path === 'oauth/meta/callback') return metaCallback(request)
     if (path === 'oauth/google/callback') return googleCallback(request)
     if (path === 'oauth/tiktok/callback') return tiktokCallback(request)
 
-    if (path === 'connections') return listConnections()
-    if (path === 'users') return listUsers()
+    if (path === 'connections') return listConnections(request)
+    if (path === 'users') return listUsers(request)
     if (path === 'impact-stats') return getImpactStats()
     if (path === 'live/facebook/summary') return liveFacebook(request)
     if (path === 'live/instagram/summary') return liveInstagram(request)
@@ -82,9 +110,9 @@ export async function GET(request, { params }) {
     if (path === 'live/tiktok/summary') return liveTiktok(request)
     if (path === 'live/ga4/summary') return liveGa4(request)
 
-    if (path === 'ayrshare/status') return ayrStatus()
+    if (path === 'ayrshare/status') return ayrStatus(request)
     if (path === 'ayrshare/analytics') return ayrAnalytics(request)
-    if (path === 'ayrshare/refresh') return ayrRefresh()
+    if (path === 'ayrshare/refresh') return ayrRefresh(request)
     if (path === 'ayrshare/history') return ayrHistory(request)
     if (path === 'digest/weekly/status') return digestStatus()
     if (path === 'activity-logs') return getActivityLogs(request)
@@ -126,24 +154,34 @@ export async function DELETE(request, { params }) {
   try {
     if (path.startsWith('connections/')) {
       const provider = path.split('/')[1]
+      const workspace = await actorWorkspace(request)
+      if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
       const col = await connections()
-      await col.deleteMany({ provider })
+      await col.deleteMany({ provider, owner_email: workspace })
       return NextResponse.json({ ok: true })
     }
     if (path === 'ayrshare/profile') {
-      const stored = await getStoredProfile()
+      const workspace = await actorWorkspace(request)
+      if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
+      const stored = await getStoredProfile(workspace)
       if (stored?.profileKey) {
         try { await deleteProfile(stored.profileKey) } catch {}
       }
-      await deleteStoredProfile()
+      await deleteStoredProfile(workspace)
       return NextResponse.json({ ok: true })
     }
     if (path.startsWith('users/')) {
-      const email = decodeURIComponent(path.slice('users/'.length))
-      const err = await ensureNotLastActiveAdmin(email.toLowerCase())
+      const email = decodeURIComponent(path.slice('users/'.length)).toLowerCase()
+      const workspace = await actorWorkspace(request)
+      const target = await findUserByEmail(email)
+      if (!target) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+      if (!workspace || target.orgOwnerEmail !== workspace) {
+        return NextResponse.json({ error: 'Tidak diizinkan mengubah pengguna di luar organisasi Anda' }, { status: 403 })
+      }
+      const err = await ensureNotLastActiveAdmin(email, workspace)
       if (err) return NextResponse.json({ error: err }, { status: 400 })
-      await deleteUserByEmail(email.toLowerCase())
-      await logActivity({ action:'user.delete', actor: request.headers.get('x-actor-email') || 'admin', target: email.toLowerCase(), status:'success', ...reqContext(request) })
+      await deleteUserByEmail(email)
+      await logActivity({ action:'user.delete', actor: request.headers.get('x-actor-email') || 'admin', target: email, status:'success', ...reqContext(request) })
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -160,6 +198,8 @@ async function metaCallback(request) {
     const error = url.searchParams.get('error_description') || url.searchParams.get('error')
     if (error) return popupResponse({ ok:false, provider:'Meta', message: error })
     if (!code) return popupResponse({ ok:false, provider:'Meta', message: 'No code' })
+    const owner = decodeOauthState(url.searchParams.get('state'))
+    if (!owner) return popupResponse({ ok:false, provider:'Meta', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
     const short = await metaExchangeCode(code, metaRedirect(request))
     const long = await metaLongLived(short.access_token)
     const pages = await metaGetPages(long.access_token)
@@ -167,9 +207,10 @@ async function metaCallback(request) {
     pages.forEach(pg => { if (pg.instagram_business_account) igAccounts.push({ ...pg.instagram_business_account, page_id: pg.id, page_name: pg.name }) })
     const col = await connections()
     await col.updateOne(
-      { provider: 'meta' },
+      { provider: 'meta', owner_email: owner },
       { $set: {
         provider: 'meta',
+        owner_email: owner,
         user_access_token: long.access_token,
         expires_at: long.expires_in ? new Date(Date.now() + long.expires_in*1000) : null,
         pages: pages.map(pg => ({ id: pg.id, name: pg.name, access_token: pg.access_token, category: pg.category })),
@@ -192,15 +233,18 @@ async function googleCallback(request) {
     const error = url.searchParams.get('error_description') || url.searchParams.get('error')
     if (error) return popupResponse({ ok:false, provider:'Google', message: error })
     if (!code) return popupResponse({ ok:false, provider:'Google', message: 'No code' })
+    const owner = decodeOauthState(url.searchParams.get('state'))
+    if (!owner) return popupResponse({ ok:false, provider:'Google', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
     const t = await googleExchangeCode(code, googleRedirect(request))
     let channels = [], gaProperties = []
     try { channels = await ytListChannels(t.access_token) } catch (e) { console.warn('yt list', e.message) }
     try { gaProperties = await gaListProperties(t.access_token) } catch (e) { console.warn('ga list', e.message) }
     const col = await connections()
     await col.updateOne(
-      { provider: 'google' },
+      { provider: 'google', owner_email: owner },
       { $set: {
         provider: 'google',
+        owner_email: owner,
         access_token: t.access_token,
         refresh_token: t.refresh_token,
         expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
@@ -224,14 +268,17 @@ async function tiktokCallback(request) {
     const error = url.searchParams.get('error_description') || url.searchParams.get('error')
     if (error) return popupResponse({ ok:false, provider:'TikTok', message: error })
     if (!code) return popupResponse({ ok:false, provider:'TikTok', message: 'No code' })
+    const owner = decodeOauthState(url.searchParams.get('state'))
+    if (!owner) return popupResponse({ ok:false, provider:'TikTok', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
     const t = await tiktokExchangeCode(code, tiktokRedirect(request))
     let user = null
     try { user = await tiktokUserInfo(t.access_token) } catch (e) { console.warn('tt user', e.message) }
     const col = await connections()
     await col.updateOne(
-      { provider: 'tiktok' },
+      { provider: 'tiktok', owner_email: owner },
       { $set: {
         provider: 'tiktok',
+        owner_email: owner,
         access_token: t.access_token, refresh_token: t.refresh_token,
         open_id: t.open_id || user?.open_id,
         expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
@@ -245,9 +292,11 @@ async function tiktokCallback(request) {
   }
 }
 
-async function listConnections() {
+async function listConnections(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connections: [] })
   const col = await connections()
-  const docs = await col.find({}).toArray()
+  const docs = await col.find({ owner_email: workspace }).toArray()
   return NextResponse.json({ connections: docs.map(d => ({
     provider: d.provider,
     connected: true,
@@ -268,14 +317,16 @@ async function ensureGoogleToken(doc) {
   try {
     const t = await googleRefreshToken(doc.refresh_token)
     const col = await connections()
-    await col.updateOne({ provider:'google' }, { $set: { access_token: t.access_token, expires_at: new Date(Date.now() + t.expires_in*1000), updated_at: new Date() } })
+    await col.updateOne({ provider:'google', owner_email: doc.owner_email }, { $set: { access_token: t.access_token, expires_at: new Date(Date.now() + t.expires_in*1000), updated_at: new Date() } })
     return t.access_token
   } catch { return doc.access_token }
 }
 
 async function liveFacebook(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
   const col = await connections()
-  const doc = await col.findOne({ provider: 'meta' })
+  const doc = await col.findOne({ provider: 'meta', owner_email: workspace })
   if (!doc || !doc.pages?.length) return NextResponse.json({ connected: false })
   const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
   const pageId = url.searchParams.get('page_id') || doc.pages[0].id
@@ -289,8 +340,10 @@ async function liveFacebook(request) {
 }
 
 async function liveInstagram(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
   const col = await connections()
-  const doc = await col.findOne({ provider: 'meta' })
+  const doc = await col.findOne({ provider: 'meta', owner_email: workspace })
   if (!doc || !doc.ig_accounts?.length) return NextResponse.json({ connected: false })
   const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
   const ig = doc.ig_accounts[0]
@@ -304,8 +357,10 @@ async function liveInstagram(request) {
 }
 
 async function liveYoutube(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
   const col = await connections()
-  const doc = await col.findOne({ provider: 'google' })
+  const doc = await col.findOne({ provider: 'google', owner_email: workspace })
   if (!doc || !doc.channels?.length) return NextResponse.json({ connected: false })
   const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
   const ch = doc.channels[0]
@@ -321,8 +376,10 @@ async function liveYoutube(request) {
 }
 
 async function liveTiktok(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
   const col = await connections()
-  const doc = await col.findOne({ provider: 'tiktok' })
+  const doc = await col.findOne({ provider: 'tiktok', owner_email: workspace })
   if (!doc) return NextResponse.json({ connected: false })
   try {
     let user = doc.user
@@ -339,8 +396,10 @@ async function liveTiktok(request) {
 }
 
 async function liveGa4(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
   const col = await connections()
-  const doc = await col.findOne({ provider: 'google' })
+  const doc = await col.findOne({ provider: 'google', owner_email: workspace })
   if (!doc || !doc.ga_properties?.length) return NextResponse.json({ connected: false })
   const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
   const propId = url.searchParams.get('property_id') || doc.ga_properties[0].id
@@ -418,7 +477,7 @@ function initialsOf(name) { return (name||'').split(/\s+/).filter(Boolean).slice
 const SEED_USERS = [
   { name:'Annisa Permatasari', email:'annisa.permatasari@dikdasmen.belajar.id', password:'Admin@2026',     role:'Admin',     jabatan:'Kepala Sub-Bagian Humas' },
   { name:'Rina Setiawati',     email:'rina.setiawati@dikdasmen.belajar.id',     password:'Analyst@2026',   role:'Analyst',   jabatan:'Analis Komunikasi Digital' },
-  { name:'Budi Santosa',       email:'budi.santosa@dikdasmen.belajar.id',       password:'Executive@2026', role:'Executive', jabatan:'Direktur Kursus dan Pelatihan' },
+  { name:'Budi Santosa',       email:'budi.santosa@dikdasmen.belajar.id',       password:'Executive@2026', role:'Executive', jabatan:'Direktur' },
   { name:'Dewi Rahayu',        email:'dewi.rahayu@dikdasmen.belajar.id',        password:'Viewer@2026',    role:'Viewer',    jabatan:'Staf Publikasi' },
 ]
 let _seeded = false
@@ -431,18 +490,20 @@ async function ensureSeeded() {
   _seeded = true
 }
 
-async function ensureNotLastActiveAdmin(email) {
+async function ensureNotLastActiveAdmin(email, orgOwnerEmail) {
   const target = await findUserByEmail(email)
   if (!target || target.role !== 'Admin') return null
-  const otherActiveAdmins = await countOtherActiveAdmins(email)
+  const otherActiveAdmins = await countOtherActiveAdmins(email, orgOwnerEmail)
   if (otherActiveAdmins === 0) return 'Tidak dapat menghapus/menonaktifkan Admin terakhir. Tambah Admin lain terlebih dulu.'
   return null
 }
 
-async function listUsers() {
+async function listUsers(request) {
   try {
     await ensureSeeded()
-    const docs = await listUsersRows()
+    const workspace = await actorWorkspace(request)
+    if (!workspace) return NextResponse.json({ users: [] })
+    const docs = await listUsersRows(workspace)
     return NextResponse.json({ users: docs.map(d => ({ name: d.name, email: d.email, role: d.role, plan: d.plan || 'starter', jabatan: d.jabatan, initial: d.initial, active: d.active !== false, seeded: !!d.seeded, created_at: d.created_at })) })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal memuat daftar user' }, { status: 500 })
@@ -483,6 +544,32 @@ async function createUser(request) {
 
   try {
     const existing = email ? await findUserByEmail(email) : null
+
+    // actor hadir hanya kalau request datang dari dalam dashboard (Settings >
+    // Users & Roles, lewat apiFetch yang mengirim header x-actor-email).
+    // Form registrasi publik tidak mengirim header ini.
+    const actorEmail = String(request.headers.get('x-actor-email') || '').trim().toLowerCase()
+    const actor = actorEmail ? await findUserByEmail(actorEmail) : null
+    const actingAsAdmin = !!actor
+
+    if (!actingAsAdmin && existing) {
+      // Registrasi publik tidak boleh menimpa akun yang sudah ada (account takeover).
+      return NextResponse.json(
+        { error: 'Email sudah terdaftar. Silakan masuk atau gunakan Lupa Kata Sandi.' },
+        { status: 409 }
+      )
+    }
+
+    const actorWorkspaceEmail = actor ? (actor.orgOwnerEmail || actor.email) : null
+    if (actingAsAdmin && existing && existing.orgOwnerEmail && existing.orgOwnerEmail !== actorWorkspaceEmail) {
+      return NextResponse.json(
+        { error: 'Tidak diizinkan mengubah pengguna di luar organisasi Anda' },
+        { status: 403 }
+      )
+    }
+
+    const orgOwnerEmail = existing?.orgOwnerEmail || actorWorkspaceEmail || email
+
     const passwordValue = password || existing?.password || ''
 
     if (!existing && !passwordValue) {
@@ -499,7 +586,12 @@ async function createUser(request) {
       )
     }
 
-    const plan = PLAN_ALLOWED.includes(planInput) ? planInput : (existing?.plan || 'starter')
+    // Paket melekat ke workspace, bukan per-anggota tim — anggota yang
+    // ditambahkan/diedit Admin selalu mengikuti paket workspace-nya, hanya
+    // pemilik workspace (registrasi/self-edit) yang bisa memilih paket.
+    const plan = actingAsAdmin
+      ? (existing?.plan || actor.plan || 'starter')
+      : (PLAN_ALLOWED.includes(planInput) ? planInput : (existing?.plan || 'starter'))
 
     if (plan !== 'agency' && role !== 'Admin') {
       return NextResponse.json(
@@ -515,6 +607,7 @@ async function createUser(request) {
       password: passwordValue,
       role,
       plan,
+      orgOwnerEmail,
       jabatan,
       initial: initialsOf(name),
       active: existing?.active ?? true,
@@ -577,7 +670,7 @@ async function authLogin(request) {
       return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
     }
     await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
-    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, plan: doc.plan || 'starter', jabatan: doc.jabatan, initial: doc.initial } })
+    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, plan: doc.plan || 'starter', orgOwnerEmail: doc.orgOwnerEmail || doc.email, jabatan: doc.jabatan, initial: doc.initial } })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal memproses login' }, { status: 500 })
   }
@@ -591,8 +684,12 @@ async function toggleUserStatus(request) {
     if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
     const existing = await findUserByEmail(email)
     if (!existing) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
+    const workspace = await actorWorkspace(request)
+    if (!workspace || existing.orgOwnerEmail !== workspace) {
+      return NextResponse.json({ error: 'Tidak diizinkan mengubah pengguna di luar organisasi Anda' }, { status: 403 })
+    }
     if (!active) {
-      const err = await ensureNotLastActiveAdmin(email)
+      const err = await ensureNotLastActiveAdmin(email, workspace)
       if (err) return NextResponse.json({ error: err }, { status: 400 })
     }
     const updated = await setUserActive(email, active)
@@ -735,7 +832,7 @@ async function aiInsights(request) {
     const body = await request.json().catch(()=>({}))
     const { context = {}, scope = 'overview' } = body
     const { LlmChat, UserMessage } = await import('emergentintegrations')
-    const systemPrompt = `Anda adalah analis komunikasi digital senior untuk Direktorat Kursus dan Pelatihan (Kementerian Pendidikan Dasar dan Menengah Republik Indonesia).
+    const systemPrompt = `Anda adalah analis komunikasi digital senior untuk tim media sosial klien ini.
 Analisis data JSON dan hasilkan insight Bahasa Indonesia yang jelas untuk pimpinan.
 KELUARKAN JSON VALID dengan struktur:
 {
@@ -765,9 +862,11 @@ ATURAN: Item singkat 1-2 kalimat, sebutkan angka data jika relevan. Bahasa Indon
 
 
 /* ============ AYRSHARE ============ */
-async function ayrStatus() {
+async function ayrStatus(request) {
   if (!hasAyrshareCreds()) return NextResponse.json({ configured: false })
-  const stored = await getStoredProfile()
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ configured: true, hasProfile: false })
+  const stored = await getStoredProfile(workspace)
   if (!stored?.profileKey) return NextResponse.json({ configured: true, hasProfile: false })
   // Ambil status akun sosial yang sudah terhubung dari Ayrshare
   const { ok, data } = await getUser(stored.profileKey)
@@ -785,20 +884,22 @@ async function ayrStatus() {
 
 async function ayrLink(request) {
   if (!hasAyrshareCreds()) return NextResponse.json({ error: 'Kredensial Ayrshare belum dikonfigurasi' }, { status: 400 })
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
   const body = await request.json().catch(()=>({}))
   const platforms = body.platforms || ['facebook','instagram','youtube','tiktok']
   const ctx = reqContext(request)
   const actor = request.headers.get('x-actor-email') || 'admin'
 
   // Pastikan ada profile — jika belum, buat baru
-  let stored = await getStoredProfile()
+  let stored = await getStoredProfile(workspace)
   if (!stored?.profileKey) {
-    const title = body.title || `Direktorat Kursus & Pelatihan ${new Date().getFullYear()}`
+    const title = body.title || `${actor.split('@')[0] || 'Workspace'} ${new Date().getFullYear()}`
     const created = await createProfile(title)
     if (!created.ok) {
       return NextResponse.json({ error: 'Gagal membuat Ayrshare profile', detail: created.data }, { status: 502 })
     }
-    stored = await upsertStoredProfile('default', {
+    stored = await upsertStoredProfile(workspace, {
       title: created.data?.title || title,
       refId: created.data?.refId,
       profileKey: created.data?.profileKey,
@@ -826,12 +927,14 @@ async function ayrLink(request) {
   })
 }
 
-async function ayrRefresh() {
-  const stored = await getStoredProfile()
+async function ayrRefresh(request) {
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
+  const stored = await getStoredProfile(workspace)
   if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 404 })
   const { ok, data } = await getUser(stored.profileKey)
   if (!ok) return NextResponse.json({ error: 'Gagal fetch', detail: data }, { status: 502 })
-  await upsertStoredProfile('default', {
+  await upsertStoredProfile(workspace, {
     title: stored.title, refId: stored.refId, profileKey: stored.profileKey,
     lastUser: data, last_synced_at: new Date(),
   })
@@ -839,7 +942,9 @@ async function ayrRefresh() {
 }
 
 async function ayrAnalytics(request) {
-  const stored = await getStoredProfile()
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
+  const stored = await getStoredProfile(workspace)
   if (!stored?.profileKey) return NextResponse.json({ connected: false, error: 'Profile belum dibuat' })
   const url = new URL(request.url)
   const platformsParam = url.searchParams.get('platforms')
@@ -855,7 +960,9 @@ async function ayrAnalytics(request) {
  * Query params: platform=instagram|facebook|youtube|tiktok, days=30
  */
 async function ayrHistory(request) {
-  const stored = await getStoredProfile()
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ connected: false })
+  const stored = await getStoredProfile(workspace)
   if (!stored?.profileKey) return NextResponse.json({ connected: false, error: 'Profile belum dibuat' })
   const url = new URL(request.url)
   const platform = (url.searchParams.get('platform') || '').toLowerCase() || null
@@ -916,7 +1023,9 @@ async function ayrHistory(request) {
 }
 
 async function ayrPost(request) {
-  const stored = await getStoredProfile()
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
+  const stored = await getStoredProfile(workspace)
   const ctx = reqContext(request)
   const actor = request.headers.get('x-actor-email') || 'admin'
   if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 400 })

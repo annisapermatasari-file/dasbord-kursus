@@ -4,6 +4,24 @@ import { AreaChart, Area, ResponsiveContainer } from 'recharts'
 import { ArrowUpRight, ArrowDownRight, Calendar, Sparkles, CheckCircle2, TrendingUp, AlertTriangle, Target, Lightbulb, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import { formatNumber, pctChange } from '@/lib/mockData'
 
+/** User yang sedang login (lihat app/page.js) — dipakai untuk mengidentifikasi workspace di setiap request. */
+export function getCurrentUser() {
+  if (typeof window === 'undefined') return null
+  try { return JSON.parse(localStorage.getItem('dashboard_user') || 'null') } catch { return null }
+}
+
+/**
+ * fetch() yang menambahkan header x-actor-email dari user yang sedang login.
+ * Backend memakainya untuk mengisolasi data per workspace (koneksi media
+ * sosial, daftar user) supaya client satu tidak melihat data client lain.
+ */
+export function apiFetch(path, options = {}) {
+  const u = getCurrentUser()
+  const headers = { ...(options.headers || {}) }
+  if (u?.email) headers['x-actor-email'] = u.email
+  return fetch(path, { ...options, headers })
+}
+
 export const PERIODS = [
   { key:'1', label:'Hari ini', days:1 },
   { key:'7', label:'7 hari terakhir', days:7 },

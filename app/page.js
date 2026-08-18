@@ -16,14 +16,14 @@ import {
 import LandingScreen from '@/components/marketing/LandingScreen'
 
 const MENU = [
-  { key:'overview', label:'Overview', icon: LayoutDashboard, title:'Ringkasan Performa Digital', desc:'Ringkasan performa seluruh kanal komunikasi digital Direktorat.' },
+  { key:'overview', label:'Overview', icon: LayoutDashboard, title:'Ringkasan Performa Digital', desc:'Ringkasan performa seluruh kanal komunikasi digital Anda.' },
   { key:'executive', label:'Executive Summary', icon: Crown, title:'Executive Summary', desc:'Ringkasan performa digital khusus pimpinan.', highlight:true },
   { key:'social', label:'Social Media Performance', icon: BarChart3, title:'Social Media Performance', desc:'Perbandingan performa antar platform.' },
-  { key:'instagram', label:'Instagram', icon: Instagram, title:'Instagram Analytics', desc:'Detail performa akun Instagram @kursuskita.' },
-  { key:'facebook', label:'Facebook', icon: Facebook, title:'Facebook Analytics', desc:'Detail performa Halaman KursusKita.info.' },
-  { key:'youtube', label:'YouTube', icon: Youtube, title:'YouTube Analytics', desc:'Detail performa channel @kursuskita1211.' },
-  { key:'tiktok', label:'TikTok', icon: Music2, title:'TikTok Analytics', desc:'Detail performa akun TikTok @kursuskita.' },
-  { key:'website', label:'Website', icon: Globe, title:'Website Analytics', desc:'kursus.kemendikdasmen.go.id — Google Analytics 4.' },
+  { key:'instagram', label:'Instagram', icon: Instagram, title:'Instagram Analytics', desc:'Detail performa akun Instagram Anda.' },
+  { key:'facebook', label:'Facebook', icon: Facebook, title:'Facebook Analytics', desc:'Detail performa Halaman Facebook Anda.' },
+  { key:'youtube', label:'YouTube', icon: Youtube, title:'YouTube Analytics', desc:'Detail performa channel YouTube Anda.' },
+  { key:'tiktok', label:'TikTok', icon: Music2, title:'TikTok Analytics', desc:'Detail performa akun TikTok Anda.' },
+  { key:'website', label:'Website', icon: Globe, title:'Website Analytics', desc:'Traffic & engagement website Anda — Google Analytics 4.' },
   { key:'content', label:'Content Analytics', icon: FileText, title:'Content Analytics', desc:'Analisis seluruh konten & Performance Score.' },
   { key:'audience', label:'Audience Analytics', icon: Users, title:'Audience Analytics', desc:'Demografi & perilaku audiens.' },
   { key:'engagement', label:'Engagement Analytics', icon: Heart, title:'Engagement Analytics', desc:'Analisis interaksi audiens.' },
@@ -54,7 +54,7 @@ const PLANS = {
 const PRESET_USERS = [
   { name:'Annisa Permatasari', role:'Admin',     initial:'AP', jabatan:'Kepala Sub-Bagian Humas',            email:'annisa.permatasari@dikdasmen.belajar.id', password:'Admin@2026' },
   { name:'Rina Setiawati',     role:'Analyst',   initial:'RS', jabatan:'Analis Komunikasi Digital',          email:'rina.setiawati@dikdasmen.belajar.id',     password:'Analyst@2026' },
-  { name:'Budi Santosa',       role:'Executive', initial:'BS', jabatan:'Direktur Kursus dan Pelatihan',      email:'budi.santosa@dikdasmen.belajar.id',       password:'Executive@2026' },
+  { name:'Budi Santosa',       role:'Executive', initial:'BS', jabatan:'Direktur',      email:'budi.santosa@dikdasmen.belajar.id',       password:'Executive@2026' },
   { name:'Dewi Rahayu',        role:'Viewer',    initial:'DR', jabatan:'Staf Publikasi',                     email:'dewi.rahayu@dikdasmen.belajar.id',        password:'Viewer@2026' },
 ]
 
@@ -179,7 +179,7 @@ export default function App({ searchParams }) {
           {activeKey==='compare' && <ComparePeriodView days={days} />}
           {activeKey==='recommend' && <RecommendationsView days={days} />}
           {activeKey==='reports' && <ReportsView days={days} />}
-          {activeKey==='settings' && <SettingsView />}
+          {activeKey==='settings' && <SettingsView plan={user.plan} />}
 
           <footer className="pt-6 pb-2 text-center text-xs text-slate-400 print:hidden">© {new Date().getFullYear()} SocialPulse</footer>
         </div>
@@ -196,10 +196,8 @@ function PrintKop() {
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#0B2545] to-[#1D4ED8] flex items-center justify-center print:bg-[#0B2545]"><ShieldCheck className="w-10 h-10 text-white" /></div>
         <div className="text-center flex-1">
-          <div className="text-[10px] uppercase tracking-widest text-slate-600">Republik Indonesia</div>
-          <div className="text-sm font-bold text-slate-900 uppercase leading-tight">Kementerian Pendidikan Dasar dan Menengah</div>
-          <div className="text-lg font-black text-[#0B2545] uppercase tracking-wide leading-tight">Direktorat Kursus dan Pelatihan</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Jl. Jenderal Sudirman, Senayan · Jakarta Pusat · kursus.kemendikdasmen.go.id</div>
+          <div className="text-lg font-black text-[#0B2545] uppercase tracking-wide leading-tight">SocialPulse</div>
+          <div className="text-[10px] text-slate-500 mt-0.5">Monitoring, Analisis, dan Evaluasi Komunikasi Digital</div>
         </div>
         <div className="w-16 h-16 flex items-center justify-center opacity-60"><ShieldCheck className="w-10 h-10 text-[#0B2545]" /></div>
       </div>
@@ -211,7 +209,7 @@ function PrintFooter({ user }) {
   return (
     <div className="hidden print:block fixed bottom-4 left-0 right-0 px-6 text-[9px] text-slate-500 border-t border-slate-300 pt-2">
       <div className="flex justify-between items-center">
-        <div>Dashboard Media Sosial · Direktorat Kursus dan Pelatihan</div>
+        <div>SocialPulse Dashboard</div>
         <div>Dicetak: {new Date().toLocaleString('id-ID',{ dateStyle:'long', timeStyle:'short' })} · Oleh: {user?.name} ({user?.role})</div>
       </div>
     </div>

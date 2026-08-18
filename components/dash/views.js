@@ -17,6 +17,7 @@ import {
 } from '@/lib/mockData'
 import {
   Card, ChartTooltip, KpiCard, ScoreBadge, SectionHeader, fmtShortDate, colorOf, labelOf, AIInsightsPanel,
+  apiFetch, getCurrentUser,
 } from './shared'
 
 /* =========== OVERVIEW =========== */
@@ -192,13 +193,13 @@ export function PlatformDetailView({ platformKey, days }) {
       // 1) Try OAuth endpoint
       if (oauthEndpoint) {
         try {
-          const j = await fetch(`${oauthEndpoint}?days=${days}`).then(r=>r.json())
+          const j = await apiFetch(`${oauthEndpoint}?days=${days}`).then(r=>r.json())
           if (!cancelled && j.connected && !j.error) { setLive(j); setLiveSource('oauth'); return }
         } catch {}
       }
       // 2) Fallback to Ayrshare aggregate + history for daily
       try {
-        const j = await fetch(`/api/ayrshare/analytics?platforms=${platformKey}`).then(r=>r.json())
+        const j = await apiFetch(`/api/ayrshare/analytics?platforms=${platformKey}`).then(r=>r.json())
         if (cancelled) return
         if (j.connected && j.data && !j.error) {
           const platData = j.data[platformKey] || j.data[platformKey.toLowerCase()]
@@ -230,7 +231,7 @@ export function PlatformDetailView({ platformKey, days }) {
       } catch {}
       // 3) Also try daily history (independent of aggregate result)
       try {
-        const h = await fetch(`/api/ayrshare/history?platform=${platformKey}&days=${days}`).then(r=>r.json())
+        const h = await apiFetch(`/api/ayrshare/history?platform=${platformKey}&days=${days}`).then(r=>r.json())
         if (cancelled) return
         if (h.connected && Array.isArray(h.series) && h.series.length && h.rawCount > 0) {
           setDailyLive(h.series)
@@ -404,7 +405,7 @@ export function WebsiteView({ days }) {
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-sky-50 text-sky-600"><Globe className="w-7 h-7" /></div>
-        <div><div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Website Resmi</div><div className="text-lg font-bold text-slate-900">kursus.kemendikdasmen.go.id</div></div>
+        <div><div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Website</div><div className="text-lg font-bold text-slate-900">{findPlatform('website').handle}</div></div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -544,7 +545,7 @@ export function CampaignView() {
   const camps = useMemo(() => generateCampaignMetrics(), [])
   const best = [...camps].sort((a,b)=>b.score-a.score)[0]
   const worst = [...camps].sort((a,b)=>a.score-b.score)[0]
-  const insights = { findings:[`Total ${camps.length} campaign berjalan. Terbaik: "${best.name}" (skor ${best.score}).`,`Rata-rata engagement rate campaign ${(camps.reduce((a,c)=>a+c.engagementRate,0)/camps.length).toFixed(2)}%.`], opportunities:[`Campaign "${best.name}" dapat diperluas dengan format serupa di kuartal berikutnya.`], risks:[`Campaign "${worst.name}" berperforma di bawah rata-rata — perlu evaluasi target audiens.`], actions:['Alokasikan budget lebih besar ke campaign yang menunjukkan engagement > 6%.','Standarkan naming convention & tagging campaign lintas platform.'], ideas:['Campaign "Bulan Sertifikasi Nasional" — kolaborasi lintas Direktorat.'] }
+  const insights = { findings:[`Total ${camps.length} campaign berjalan. Terbaik: "${best.name}" (skor ${best.score}).`,`Rata-rata engagement rate campaign ${(camps.reduce((a,c)=>a+c.engagementRate,0)/camps.length).toFixed(2)}%.`], opportunities:[`Campaign "${best.name}" dapat diperluas dengan format serupa di kuartal berikutnya.`], risks:[`Campaign "${worst.name}" berperforma di bawah rata-rata — perlu evaluasi target audiens.`], actions:['Alokasikan budget lebih besar ke campaign yang menunjukkan engagement > 6%.','Standarkan naming convention & tagging campaign lintas platform.'], ideas:['Campaign "Bulan Sertifikasi Nasional" — kolaborasi lintas tim.'] }
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -664,11 +665,11 @@ export function ReportsView({ days }) {
       {generated && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6 print:shadow-none print:border-0">
           <div className="border-b border-slate-200 pb-4">
-            <div className="text-xs text-slate-500 uppercase tracking-widest">Laporan Direktorat Kursus dan Pelatihan</div>
+            <div className="text-xs text-slate-500 uppercase tracking-widest">Laporan SocialPulse</div>
             <h1 className="text-2xl font-bold text-slate-900 mt-1">{REPORT_TYPES.find(r=>r.v===type).l}</h1>
             <p className="text-sm text-slate-500 mt-1">Periode: {days} hari terakhir · Digenerate {new Date().toLocaleDateString('id-ID',{ dateStyle:'long' })}</p>
           </div>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Executive Summary</h2><p className="text-sm text-slate-700 leading-relaxed">Selama {days} hari, kanal digital Direktorat Kursus dan Pelatihan menjangkau {formatNumber(totalsCurr.reach)} orang dengan {formatNumber(totalsCurr.engagement)} engagement (rate {totalsCurr.engagementRate}%). Follower growth gabungan mencapai +{formatNumber(totalsCurr.followerGrowth)} pengguna baru dan sebanyak {totalsCurr.contentPublished} konten dipublikasikan.</p></section>
+          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Executive Summary</h2><p className="text-sm text-slate-700 leading-relaxed">Selama {days} hari, kanal digital Anda menjangkau {formatNumber(totalsCurr.reach)} orang dengan {formatNumber(totalsCurr.engagement)} engagement (rate {totalsCurr.engagementRate}%). Follower growth gabungan mencapai +{formatNumber(totalsCurr.followerGrowth)} pengguna baru dan sebanyak {totalsCurr.contentPublished} konten dipublikasikan.</p></section>
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">KPI Utama</h2><div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[['Reach',formatNumber(totalsCurr.reach)],['Engagement',formatNumber(totalsCurr.engagement)],['Eng. Rate',totalsCurr.engagementRate+'%'],['Follower Growth','+'+formatNumber(totalsCurr.followerGrowth)]].map(([k,v])=><div key={k} className="rounded-lg border border-slate-200 p-3"><div className="text-[10px] uppercase text-slate-500">{k}</div><div className="text-lg font-bold text-slate-900">{v}</div></div>)}</div></section>
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">Performa per Platform</h2><table className="w-full text-sm border-t border-slate-100"><thead className="text-xs text-slate-500"><tr><th className="text-left py-2">Platform</th><th className="text-left">Followers</th><th className="text-left">Reach</th><th className="text-left">Eng. Rate</th></tr></thead><tbody>{platforms.map(p=>(<tr key={p.key} className="border-t border-slate-100"><td className="py-2">{p.name}</td><td>{formatNumber(perPlatformCurr[p.key].followers)}</td><td>{formatNumber(perPlatformCurr[p.key].reach)}</td><td>{perPlatformCurr[p.key].engagementRate}%</td></tr>))}</tbody></table></section>
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">Top 5 Konten Terbaik</h2><ol className="list-decimal list-inside space-y-1 text-sm text-slate-700">{top.map(c=><li key={c.id}><strong>{c.title}</strong> — {c.platformName}, {c.type} · Skor {c.score}</li>)}</ol></section>
@@ -676,7 +677,7 @@ export function ReportsView({ days }) {
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">Campaign Aktif</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{camps.slice(0,4).map(c=><li key={c.id}>{c.name} — Skor {c.score}, ER {c.engagementRate}%</li>)}</ul></section>
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">Key Findings</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{insights.findings.map((f,i)=><li key={i}>{f}</li>)}</ul></section>
           <section><h2 className="text-lg font-bold text-slate-900 mb-2">Rekomendasi & Next Action Plan</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{insights.actions.map((f,i)=><li key={i}>{f}</li>)}</ul></section>
-          <div className="text-center text-xs text-slate-400 pt-6 border-t border-slate-100">Laporan digenerate oleh Dashboard Media Sosial Direktorat Kursus dan Pelatihan.</div>
+          <div className="text-center text-xs text-slate-400 pt-6 border-t border-slate-100">Laporan digenerate oleh SocialPulse Dashboard.</div>
         </div>
       )}
     </div>
@@ -684,7 +685,15 @@ export function ReportsView({ days }) {
 }
 
 /* =========== SETTINGS =========== */
-export function SettingsView() {
+// Tab Settings yang boleh diakses per paket — makin tinggi paket, makin lengkap.
+const SETTINGS_TABS_BY_PLAN = {
+  starter: ['accounts', 'api', 'website', 'users'],
+  business: ['accounts', 'api', 'website', 'users', 'stats', 'digest', 'report'],
+  agency: ['accounts', 'api', 'website', 'refresh', 'users', 'stats', 'activity', 'digest', 'report', 'org'],
+}
+
+export function SettingsView({ plan = 'starter' }) {
+  const allowedTabs = SETTINGS_TABS_BY_PLAN[plan] || SETTINGS_TABS_BY_PLAN.starter
   const [tab, setTab] = useState('accounts')
   const [conns, setConns] = useState([])
   const [loading, setLoading] = useState(false)
@@ -694,16 +703,16 @@ export function SettingsView() {
 
   const loadConns = async () => {
     setLoading(true)
-    try { const r = await fetch('/api/connections'); const j = await r.json(); setConns(j.connections || []) } catch {}
+    try { const r = await apiFetch('/api/connections'); const j = await r.json(); setConns(j.connections || []) } catch {}
     setLoading(false)
   }
   const loadAyr = async () => {
-    try { const r = await fetch('/api/ayrshare/status'); const j = await r.json(); setAyr(j) } catch {}
+    try { const r = await apiFetch('/api/ayrshare/status'); const j = await r.json(); setAyr(j) } catch {}
   }
   const startAyrConnect = async () => {
     setAyrBusy(true)
     try {
-      const r = await fetch('/api/ayrshare/link', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ platforms: ['facebook','instagram','youtube','tiktok'] }) })
+      const r = await apiFetch('/api/ayrshare/link', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ platforms: ['facebook','instagram','youtube','tiktok'] }) })
       const j = await r.json()
       if (j.url) {
         window.open(j.url, 'ayrshare_link', 'width=720,height=780')
@@ -716,13 +725,13 @@ export function SettingsView() {
   }
   const refreshAyr = async () => {
     setAyrBusy(true)
-    try { await fetch('/api/ayrshare/refresh'); await loadAyr() } catch {}
+    try { await apiFetch('/api/ayrshare/refresh'); await loadAyr() } catch {}
     setAyrBusy(false)
   }
   const disconnectAyr = async () => {
     if (!confirm('Hapus profile Ayrshare? Semua koneksi sosial via Ayrshare akan hilang.')) return
     setAyrBusy(true)
-    try { await fetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
+    try { await apiFetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
     setAyrBusy(false)
   }
   useEffect(() => {
@@ -740,29 +749,35 @@ export function SettingsView() {
   }, [])
 
   function openOauth(provider) {
+    // Popup adalah navigasi penuh (bukan fetch), jadi identitas workspace
+    // dikirim lewat query param `owner`, bukan header x-actor-email.
+    const u = getCurrentUser()
+    const owner = u?.orgOwnerEmail || u?.email || ''
     const w = 620, h = 720
     const l = window.screenX + (window.outerWidth - w)/2
     const t = window.screenY + (window.outerHeight - h)/2
-    window.open(`/api/oauth/${provider}/start`, `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+    window.open(`/api/oauth/${provider}/start?owner=${encodeURIComponent(owner)}`, `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
   }
   async function disconnect(provider) {
     if (!confirm(`Putuskan koneksi ${provider}? Semua token akan dihapus.`)) return
-    await fetch(`/api/connections/${provider}`, { method:'DELETE' })
+    await apiFetch(`/api/connections/${provider}`, { method:'DELETE' })
     loadConns()
   }
 
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const ALL_TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const TABS = ALL_TABS.filter(([key]) => allowedTabs.includes(key))
+  useEffect(() => { if (!allowedTabs.includes(tab)) setTab(allowedTabs[0] || 'accounts') }, [plan])
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
   const accountsRows = [
-    { platform:'Instagram', handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : '@kursuskita', color:'#E1306C', icon:Instagram, connected: !!meta?.ig_accounts?.length, subtitle: meta?.ig_accounts?.[0] && `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers · via Meta` },
-    { platform:'Facebook', handle: meta?.pages?.[0]?.name || 'KursusKita.info', color:'#1877F2', icon:Facebook, connected: !!meta?.pages?.length, subtitle: meta?.pages?.[0] && `Page ID ${meta.pages[0].id.slice(-6)} · via Meta` },
-    { platform:'YouTube', handle: google?.channels?.[0]?.title || '@kursuskita1211', color:'#FF0000', icon:Youtube, connected: !!google?.channels?.length, subtitle: google?.channels?.[0] && `${formatNumber(+google.channels[0].subscribers||0)} subscribers · via Google` },
-    { platform:'TikTok', handle:'@kursuskita', color:'#111827', icon:Music2, connected: false, subtitle: 'Belum ada credentials TikTok Business API' },
-    { platform:'Website (GA4)', handle: google?.ga_properties?.[0]?.displayName || 'kursus.kemendikdasmen.go.id', color:'#0EA5E9', icon:Globe, connected: !!google?.ga_properties?.length, subtitle: google?.ga_properties?.[0] && `Property ${google.ga_properties[0].id} · via Google` },
+    { platform:'Instagram', handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : 'Belum terhubung', color:'#E1306C', icon:Instagram, connected: !!meta?.ig_accounts?.length, subtitle: meta?.ig_accounts?.[0] && `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers · via Meta` },
+    { platform:'Facebook', handle: meta?.pages?.[0]?.name || 'Belum terhubung', color:'#1877F2', icon:Facebook, connected: !!meta?.pages?.length, subtitle: meta?.pages?.[0] && `Page ID ${meta.pages[0].id.slice(-6)} · via Meta` },
+    { platform:'YouTube', handle: google?.channels?.[0]?.title || 'Belum terhubung', color:'#FF0000', icon:Youtube, connected: !!google?.channels?.length, subtitle: google?.channels?.[0] && `${formatNumber(+google.channels[0].subscribers||0)} subscribers · via Google` },
+    { platform:'TikTok', handle:'Belum terhubung', color:'#111827', icon:Music2, connected: false, subtitle: 'Belum ada credentials TikTok Business API' },
+    { platform:'Website (GA4)', handle: google?.ga_properties?.[0]?.displayName || 'Belum terhubung', color:'#0EA5E9', icon:Globe, connected: !!google?.ga_properties?.length, subtitle: google?.ga_properties?.[0] && `Property ${google.ga_properties[0].id} · via Google` },
   ]
 
   return (
@@ -774,7 +789,7 @@ export function SettingsView() {
       )}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
 
-      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Direktorat"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
+      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Anda"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
         <div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: a.color+'18', color: a.color }}><Ic className="w-5 h-5" /></div>
           <div className="flex-1 min-w-0">
@@ -941,8 +956,8 @@ export function SettingsView() {
       {tab==='stats' && <ImpactStatsTab />}
       {tab==='activity' && <ActivityLogsTab />}
       {tab==='digest' && <WeeklyDigestTab />}
-      {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Direktorat Kursus dan Pelatihan'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
-      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-slate-900 flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Institusi','Direktorat Kursus dan Pelatihan'],['Kementerian','Kementerian Pendidikan Dasar dan Menengah'],['Situs Resmi','kursus.kemendikdasmen.go.id'],['Kontak Publik','humas@kursus.kemendikdasmen.go.id']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm">Ganti Logo</button></div></div></Card>)}
+      {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Nama Bisnis Anda'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
+      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-slate-900 flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Organisasi/Bisnis',''],['Grup/Induk Perusahaan (opsional)',''],['Situs Resmi','https://bisnisanda.com'],['Kontak Publik','kontak@bisnisanda.com']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
   )
 }
@@ -1026,7 +1041,7 @@ export function ExecutiveSummaryView({ days }) {
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200/80 font-semibold">Executive Summary · Untuk Pimpinan</div>
               <h2 className="text-2xl font-bold mt-2">Performa Digital Periode Ini</h2>
-              <p className="text-sm text-blue-100/80 mt-1">{days} hari terakhir · Direktorat Kursus dan Pelatihan</p>
+              <p className="text-sm text-blue-100/80 mt-1">{days} hari terakhir</p>
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
@@ -1285,7 +1300,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
 
   // Publish state
   const [showPublish, setShowPublish] = useState(false)
-  const [caption, setCaption] = useState(it?.title ? it.title + '\n\n#DirektoratKursusPelatihan #KemendikdasmenRI' : '')
+  const [caption, setCaption] = useState(it?.title ? it.title + '\n\n#SocialPulse' : '')
   const [mediaUrl, setMediaUrl] = useState('')
   const [pubPlatforms, setPubPlatforms] = useState({ facebook:true, instagram:true, youtube:false, tiktok:false })
   const [publishing, setPublishing] = useState(false)
@@ -1294,7 +1309,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
   const [ayrStatus, setAyrStatus] = useState(null)
   useEffect(() => {
     if (showPublish && !ayrStatus) {
-      fetch('/api/ayrshare/status').then(r=>r.json()).then(setAyrStatus).catch(()=>{})
+      apiFetch('/api/ayrshare/status').then(r=>r.json()).then(setAyrStatus).catch(()=>{})
     }
   }, [showPublish, ayrStatus])
 
@@ -1310,7 +1325,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
       body.scheduleDate = iso
     }
     try {
-      const r = await fetch('/api/ayrshare/post', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+      const r = await apiFetch('/api/ayrshare/post', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
       const j = await r.json()
       if (r.ok && j.ok) {
         // Extract per-platform postUrls from Ayrshare response
@@ -1345,7 +1360,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
           <div><h3 className="font-semibold text-slate-900">{it ? 'Edit Konten' : 'Konten Baru'}</h3><p className="text-xs text-slate-500">Rencanakan konten untuk kalender editorial</p></div>
         </div>
         <div className="p-5 space-y-3">
-          <Field label="Judul Konten"><input value={form.title} onChange={e=>{setForm(f=>({...f, title:e.target.value})); if(!caption) setCaption(e.target.value+'\n\n#DirektoratKursusPelatihan #KemendikdasmenRI')}} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
+          <Field label="Judul Konten"><input value={form.title} onChange={e=>{setForm(f=>({...f, title:e.target.value})); if(!caption) setCaption(e.target.value+'\n\n#SocialPulse')}} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tanggal"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f, date:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></Field>
             <Field label="Status">
@@ -1489,10 +1504,10 @@ function ContentPreview({ caption, mediaUrl, platforms }) {
   const isVideo = mediaUrl && /\.(mp4|mov|webm|m4v)(\?|$)/i.test(mediaUrl)
 
   const PLATFORM_META = {
-    instagram: { name:'Instagram', color:'#E1306C', handle:'@ditbinsuslat', avatar:'DK' },
-    facebook:  { name:'Facebook',  color:'#1877F2', handle:'Direktorat Kursus dan Pelatihan', avatar:'DK' },
-    youtube:   { name:'YouTube',   color:'#FF0000', handle:'Direktorat Kursus & Pelatihan', avatar:'DK' },
-    tiktok:    { name:'TikTok',    color:'#111827', handle:'@ditbinsuslat', avatar:'DK' },
+    instagram: { name:'Instagram', color:'#E1306C', handle:'@akunanda', avatar:'YA' },
+    facebook:  { name:'Facebook',  color:'#1877F2', handle:'Halaman Bisnis Anda', avatar:'YA' },
+    youtube:   { name:'YouTube',   color:'#FF0000', handle:'Akun Anda', avatar:'YA' },
+    tiktok:    { name:'TikTok',    color:'#111827', handle:'@akunanda', avatar:'YA' },
   }
   const tabs = active.length ? active : ['instagram']
 
@@ -1772,14 +1787,15 @@ function UsersRolesTab({ roles }) {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState(null)
-  const [form, setForm] = useState({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' })
-  const isAgency = form.plan === 'agency'
+  const [form, setForm] = useState({ name:'', email:'', password:'', role:'Admin', jabatan:'' })
+  const workspacePlan = getCurrentUser()?.plan || 'starter'
+  const isAgency = workspacePlan === 'agency'
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
 
   const load = async () => {
     setLoading(true)
-    try { const r = await fetch('/api/users'); const j = await r.json(); setList(j.users || []) } catch {}
+    try { const r = await apiFetch('/api/users'); const j = await r.json(); setList(j.users || []) } catch {}
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -1792,11 +1808,11 @@ function UsersRolesTab({ roles }) {
     if (form.password && form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
     try {
       const payload = { ...form, role: isAgency ? form.role : 'Admin' }
-      const r = await fetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+      const r = await apiFetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
       const j = await r.json()
       if (!r.ok) { setError(j.error || 'Gagal menyimpan'); return }
       setFlash({ ok:true, msg: editing ? `Pengguna ${form.name} diperbarui.` : `Pengguna ${form.name} ditambahkan.` })
-      setForm({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' })
+      setForm({ name:'', email:'', password:'', role:'Admin', jabatan:'' })
       setEditing(false); load()
       setTimeout(()=>setFlash(null), 4000)
     } catch (err) { setError('Server error') }
@@ -1804,7 +1820,7 @@ function UsersRolesTab({ roles }) {
 
   async function del(email) {
     if (!confirm(`Hapus pengguna ${email}?`)) return
-    const r = await fetch(`/api/users/${encodeURIComponent(email)}`, { method:'DELETE' })
+    const r = await apiFetch(`/api/users/${encodeURIComponent(email)}`, { method:'DELETE' })
     const j = await r.json().catch(()=>({}))
     if (!r.ok) { setFlash({ ok:false, msg: j.error || 'Gagal menghapus' }); setTimeout(()=>setFlash(null), 4500); return }
     setFlash({ ok:true, msg:`Pengguna ${email} dihapus.` })
@@ -1815,7 +1831,7 @@ function UsersRolesTab({ roles }) {
   async function toggleActive(email, currentActive) {
     const newActive = !currentActive
     try {
-      const r = await fetch('/api/users/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, active: newActive }) })
+      const r = await apiFetch('/api/users/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email, active: newActive }) })
       const j = await r.json()
       if (!r.ok) { setFlash({ ok:false, msg: j.error || 'Gagal mengubah status' }); return }
       setFlash({ ok:true, msg:`Pengguna ${email} ${newActive?'diaktifkan':'dinonaktifkan'}.` })
@@ -1825,7 +1841,7 @@ function UsersRolesTab({ roles }) {
   }
 
   function editUser(u) {
-    setForm({ name: u.name, email: u.email, password: '', role: u.role, plan: u.plan || 'starter', jabatan: u.jabatan || '' })
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, jabatan: u.jabatan || '' })
     setEditing(true)
     setError('')
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1856,7 +1872,7 @@ function UsersRolesTab({ roles }) {
           </div>
           <div>
             <label className="text-xs font-medium text-slate-600">Email</label>
-            <input type="email" value={form.email} disabled={editing} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="nama@dikdasmen.belajar.id" className={`mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${editing?'bg-slate-100 text-slate-500':''}`} />
+            <input type="email" value={form.email} disabled={editing} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="nama@email.com" className={`mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${editing?'bg-slate-100 text-slate-500':''}`} />
             {editing && <div className="text-[10px] text-slate-400 mt-1">Email tidak dapat diubah saat mengedit</div>}
           </div>
           <div>
@@ -1864,10 +1880,10 @@ function UsersRolesTab({ roles }) {
             <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 6 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Paket</label>
-            <select value={form.plan} onChange={e=>{ const plan=e.target.value; setForm(f=>({...f, plan, role: plan==='agency' ? f.role : 'Admin' })) }} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-              {[['starter','Starter'],['business','Business'],['agency','Agency']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
-            </select>
+            <label className="text-xs font-medium text-slate-600">Paket Workspace</label>
+            <div className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 text-slate-500 capitalize">
+              {workspacePlan} <span className="text-[10px] text-slate-400 normal-case">(mengikuti paket akun Anda, bukan per-pengguna)</span>
+            </div>
           </div>
           <div>
             <label className="text-xs font-medium text-slate-600">Peran</label>
@@ -1888,7 +1904,7 @@ function UsersRolesTab({ roles }) {
           {error && <div className="md:col-span-2 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
           <div className="md:col-span-2 flex items-center gap-2 pt-1">
             <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
-            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Admin', plan:'starter', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
+            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Admin', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
             {flash && <span className={`ml-auto text-xs px-3 py-1.5 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-red-50 text-red-700 border border-red-200'}`}>{flash.msg}</span>}
           </div>
         </form>
@@ -2297,7 +2313,7 @@ function ImpactStatsTab() {
       </div>
 
       <Card
-        title="Statistik Dampak Direktorat"
+        title="Statistik Dampak"
         desc={updatedAt ? `Terakhir diperbarui: ${new Date(updatedAt).toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' })}` : 'Belum ada perubahan'}
         right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
       >
@@ -2333,7 +2349,7 @@ function ImpactStatsTab() {
       {/* Live preview */}
       <Card title="Pratinjau di Halaman Login" desc="Tampilan akhir yang akan dilihat pengunjung">
         <div className="rounded-2xl bg-slate-900 p-5 text-white">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak Direktorat</div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {stats.map((s, i) => (
               <div key={i} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">

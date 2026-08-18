@@ -4,8 +4,8 @@ import { Inter } from 'next/font/google'
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata = {
-  title: 'Dashboard Media Sosial — Direktorat Kursus dan Pelatihan',
-  description: 'Monitoring, Analisis, dan Evaluasi Komunikasi Digital — Data-driven Communication for Education',
+  title: 'SocialPulse — Dashboard Media Sosial',
+  description: 'Monitoring, Analisis, dan Evaluasi Komunikasi Digital — Data-driven Social Media Management',
 }
 
 export default function RootLayout({ children }) {
