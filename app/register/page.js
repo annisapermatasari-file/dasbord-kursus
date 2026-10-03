@@ -54,7 +54,7 @@ export default function RegisterPage({ searchParams }) {
       emailPlaceholder: 'you@example.com',
 
       password: 'Password',
-      passwordPlaceholder: 'At least 6 characters',
+      passwordPlaceholder: 'At least 8 characters',
 
       selectedPlan: 'Selected Plan',
 
@@ -71,7 +71,7 @@ export default function RegisterPage({ searchParams }) {
       errorName: 'Please enter your name.',
       errorBusiness: 'Please enter your business name.',
       errorEmail: 'Please enter a valid email address.',
-      errorPassword: 'Password must be at least 6 characters.',
+      errorPassword: 'Password must be at least 8 characters.',
       errorTerms:
         'Please agree to the Terms & Conditions and Privacy Policy.',
 
@@ -96,7 +96,7 @@ export default function RegisterPage({ searchParams }) {
       emailPlaceholder: 'anda@example.com',
 
       password: 'Kata Sandi',
-      passwordPlaceholder: 'Minimal 6 karakter',
+      passwordPlaceholder: 'Minimal 8 karakter',
 
       selectedPlan: 'Paket Dipilih',
 
@@ -113,7 +113,7 @@ export default function RegisterPage({ searchParams }) {
       errorBusiness: 'Silakan masukkan nama bisnis.',
       errorEmail: 'Silakan masukkan alamat email yang valid.',
       errorPassword:
-        'Kata sandi minimal 6 karakter.',
+        'Kata sandi minimal 8 karakter.',
       errorTerms:
         'Silakan setujui Syarat & Ketentuan dan Kebijakan Privasi.',
 
@@ -143,7 +143,7 @@ export default function RegisterPage({ searchParams }) {
       return
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       setError(t.errorPassword)
       return
     }

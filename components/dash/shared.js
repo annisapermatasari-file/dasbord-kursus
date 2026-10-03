@@ -11,15 +11,16 @@ export function getCurrentUser() {
 }
 
 /**
- * fetch() yang menambahkan header x-actor-email dari user yang sedang login.
- * Backend memakainya untuk mengisolasi data per workspace (koneksi media
- * sosial, daftar user) supaya client satu tidak melihat data client lain.
+ * fetch() untuk API dashboard. Identitas user dibuktikan lewat cookie sesi
+ * HttpOnly (dikirim otomatis oleh browser). Header x-actor-email hanya
+ * penanda bahwa request berasal dari dashboard; server selalu mencocokkannya
+ * dengan sesi dan menolak bila berbeda.
  */
 export function apiFetch(path, options = {}) {
   const u = getCurrentUser()
   const headers = { ...(options.headers || {}) }
   if (u?.email) headers['x-actor-email'] = u.email
-  return fetch(path, { ...options, headers })
+  return fetch(path, { credentials: 'same-origin', ...options, headers })
 }
 
 export const PERIODS = [

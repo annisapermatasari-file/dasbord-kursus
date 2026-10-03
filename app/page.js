@@ -81,7 +81,16 @@ export default function App({ searchParams }) {
 
   useEffect(() => {
     setLastUpdated(new Date())
-    try { const saved = localStorage.getItem('dashboard_user'); if (saved) setUser(JSON.parse(saved)) } catch {}
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem('dashboard_user') || 'null') } catch {}
+    if (!saved) return
+    setUser(saved)
+    // Pastikan sesi server (cookie HttpOnly) masih berlaku; data di localStorage hanya untuk tampilan
+    fetch('/api/auth/me').then(async r => {
+      if (r.status === 401) { try { localStorage.removeItem('dashboard_user') } catch {}; setUser(null); return }
+      const j = await r.json().catch(() => null)
+      if (j?.user) { setUser(j.user); try { localStorage.setItem('dashboard_user', JSON.stringify(j.user)) } catch {} }
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {

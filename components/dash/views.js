@@ -1196,7 +1196,7 @@ export function ExecutiveSummaryView({ days }) {
     setLoading(true)
     try {
       const context = { periode_hari: days, overall_score: overallScore, category: cat.label, totals: totalsCurr, previous: totalsPrev, per_platform: perPlatformCurr, website: w.totals, top_content: topContent && { title: topContent.title, platform: topContent.platformName, score: topContent.score } }
-      const r = await fetch('/api/ai-insights', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ context, scope:'executive-summary-paragraphs' }) })
+      const r = await apiFetch('/api/ai-insights', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ context, scope:'executive-summary-paragraphs' }) })
       const j = await r.json()
       if (j.insights) {
         // Merge into 5 short paragraphs
@@ -1987,7 +1987,7 @@ function UsersRolesTab({ roles }) {
     setError('')
     if (!form.name || !form.email || !form.role) { setError('Nama, email, dan peran wajib diisi'); return }
     if (!editing && !form.password) { setError('Kata sandi wajib diisi'); return }
-    if (form.password && form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
+    if (form.password && form.password.length < 8) { setError('Kata sandi minimal 8 karakter'); return }
     try {
       const payload = { ...form, role: isAgency ? form.role : 'Admin' }
       const r = await apiFetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
@@ -2059,7 +2059,7 @@ function UsersRolesTab({ roles }) {
           </div>
           <div>
             <label className="text-xs font-medium text-ink-soft">Kata Sandi {editing && <span className="text-ink-muted/70">(isi jika ingin reset)</span>}</label>
-            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 6 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 8 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
             <label className="text-xs font-medium text-ink-soft">Paket Workspace</label>
@@ -2159,8 +2159,8 @@ function ActivityLogsTab() {
       if (filterAction) qs.set('action', filterAction)
       if (filterActor) qs.set('actor', filterActor.toLowerCase())
       const [lr, sr] = await Promise.all([
-        fetch(`/api/activity-logs?${qs.toString()}`).then(r=>r.json()),
-        fetch('/api/activity-summary').then(r=>r.json()),
+        apiFetch(`/api/activity-logs?${qs.toString()}`).then(r=>r.json()),
+        apiFetch('/api/activity-summary').then(r=>r.json()),
       ])
       setLogs(lr.logs || [])
       setSummary(sr)
@@ -2310,7 +2310,7 @@ function WeeklyDigestTab() {
 
   const load = async () => {
     try {
-      const s = await fetch('/api/digest/weekly/status').then(r=>r.json())
+      const s = await apiFetch('/api/digest/weekly/status').then(r=>r.json())
       setState(s)
       setCustomEmails((s.custom_recipients||[]).join('\n'))
     } catch {}
@@ -2320,7 +2320,7 @@ function WeeklyDigestTab() {
   async function doPreview() {
     setBusy('preview'); setFlash(null)
     try {
-      const r = await fetch('/api/digest/weekly/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(r=>r.json())
       setPreview(r); setShowPreview(true)
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
     setBusy(null)
@@ -2329,7 +2329,7 @@ function WeeklyDigestTab() {
     if (!confirm('Kirim ringkasan mingguan sekarang ke semua penerima?')) return
     setBusy('send'); setFlash(null)
     try {
-      const r = await fetch('/api/digest/weekly/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(r=>r.json())
       setFlash({ ok: r.ok, message: r.ok ? `Berhasil dikirim ke ${r.results?.filter(x=>x.ok).length}/${r.recipients?.length} penerima` : (r.error || 'Gagal') })
       await load()
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
@@ -2344,7 +2344,7 @@ function WeeklyDigestTab() {
         recipients_mode: state.recipients_mode,
         custom_recipients: customEmails.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean),
       }
-      const r = await fetch('/api/digest/weekly/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) }).then(r=>r.json())
       if (r.ok) { setFlash({ ok:true, message:'Pengaturan tersimpan' }); await load() }
       else setFlash({ ok:false, message: r.error || 'Gagal simpan' })
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
@@ -2449,7 +2449,7 @@ function ImpactStatsTab() {
 
   const load = async () => {
     setLoading(true)
-    try { const r = await fetch('/api/impact-stats'); const j = await r.json(); setStats(j.stats || []); setUpdatedAt(j.updated_at) } catch {}
+    try { const r = await apiFetch('/api/impact-stats'); const j = await r.json(); setStats(j.stats || []); setUpdatedAt(j.updated_at) } catch {}
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -2463,7 +2463,7 @@ function ImpactStatsTab() {
     if (stats.some(s => !s.v || !s.l)) { setError('Nilai dan label wajib diisi untuk semua statistik'); return }
     setLoading(true)
     try {
-      const r = await fetch('/api/impact-stats', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stats }) })
+      const r = await apiFetch('/api/impact-stats', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stats }) })
       const j = await r.json()
       if (!r.ok) { setError(j.error || 'Gagal menyimpan'); setLoading(false); return }
       setUpdatedAt(j.updated_at)

@@ -16,6 +16,8 @@ import { GRAPH_VERSION, hasMetaCreds, metaAuthUrl, metaExchangeCode, metaLongLiv
 import { hasGoogleCreds, googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokRefreshToken, tiktokUserInfo, tiktokVideoList, summarizeTiktok } from '@/lib/oauth-tiktok'
 import { createOauthState, verifyOauthState } from '@/lib/oauth-state'
+import { SESSION_COOKIE, hashPassword, isHashed, verifyPassword, createSessionToken, readSessionToken, sessionMatchesUser, getCookie, sessionCookieOptions, safeEqual } from '@/lib/auth'
+import { randomInt } from 'crypto'
 import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, history, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
 import { hasSmtp, sendMail, otpEmail } from '@/lib/mailer'
 import { logActivity, reqContext, listActivity, activitySummary } from '@/lib/activity'
@@ -32,17 +34,43 @@ function googleRedirect(request) { return baseUrl(request) + '/api/oauth/google/
 function tiktokRedirect(request) { return baseUrl(request) + '/api/oauth/tiktok/callback' }
 
 /**
- * Resolusi workspace (owner_email) dari header `x-actor-email` yang dikirim
- * frontend (lihat apiFetch di components/dash/shared.js). Setiap workspace
- * = 1 Admin yang self-register + tim yang ia undang, jadi semua user & data
- * medsos milik workspace itu dikelompokkan lewat email si Admin.
+ * Identitas user diambil dari cookie sesi HttpOnly yang ditandatangani
+ * server (lib/auth.js), BUKAN dari header yang dikirim browser. Hasilnya
+ * di-cache per request.
  */
+const _sessionCache = new WeakMap()
+async function sessionUser(request) {
+  if (_sessionCache.has(request)) return _sessionCache.get(request)
+  let user = null
+  const session = readSessionToken(getCookie(request, SESSION_COOKIE))
+  if (session) {
+    const doc = await findUserByEmail(session.email).catch(() => null)
+    if (doc && doc.active !== false && sessionMatchesUser(session, doc)) user = doc
+  }
+  _sessionCache.set(request, user)
+  return user
+}
+
+/** Setiap workspace = 1 Admin yang self-register + tim yang ia undang, dikelompokkan lewat email si Admin. */
 async function actorWorkspace(request) {
-  const email = String(request.headers.get('x-actor-email') || '').trim().toLowerCase()
-  if (!email) return null
-  const actor = await findUserByEmail(email)
-  if (!actor) return null
-  return actor.orgOwnerEmail || actor.email
+  const u = await sessionUser(request)
+  return u ? (u.orgOwnerEmail || u.email) : null
+}
+
+async function actorEmail(request) {
+  return (await sessionUser(request))?.email || 'anonymous'
+}
+
+/** @returns {Promise<NextResponse|null>} respons error bila tidak berhak, null bila boleh lanjut */
+async function guard(request, { admin = false } = {}) {
+  const u = await sessionUser(request)
+  if (!u) return NextResponse.json({ error: 'Sesi berakhir. Silakan masuk lagi.' }, { status: 401 })
+  if (admin && u.role !== 'Admin') return NextResponse.json({ error: 'Hanya Admin yang dapat melakukan tindakan ini.' }, { status: 403 })
+  return null
+}
+
+function publicUser(doc) {
+  return { name: doc.name, email: doc.email, role: doc.role, plan: doc.plan || 'starter', orgOwnerEmail: doc.orgOwnerEmail || doc.email, jabatan: doc.jabatan, initial: doc.initial }
 }
 
 const PROVIDERS = {
@@ -109,6 +137,7 @@ export async function GET(request, { params }) {
     if (path === 'oauth/google/callback') return googleCallback(request)
     if (path === 'oauth/tiktok/callback') return tiktokCallback(request)
 
+    if (path === 'auth/me') return authMe(request)
     if (path === 'connections') return listConnections(request)
     if (path === 'users') return listUsers(request)
     if (path === 'impact-stats') return getImpactStats()
@@ -122,9 +151,12 @@ export async function GET(request, { params }) {
     if (path === 'ayrshare/analytics') return ayrAnalytics(request)
     if (path === 'ayrshare/refresh') return ayrRefresh(request)
     if (path === 'ayrshare/history') return ayrHistory(request)
-    if (path === 'digest/weekly/status') return digestStatus()
-    if (path === 'activity-logs') return getActivityLogs(request)
-    if (path === 'activity-summary') return getActivitySummary()
+    if (['digest/weekly/status','activity-logs','activity-summary'].includes(path)) {
+      const denied = await guard(request, { admin: true }); if (denied) return denied
+      if (path === 'digest/weekly/status') return digestStatus()
+      if (path === 'activity-logs') return getActivityLogs(request)
+      return getActivitySummary()
+    }
 
     return NextResponse.json({ error: 'Not found', path }, { status: 404 })
   } catch (e) {
@@ -137,14 +169,20 @@ export async function POST(request, { params }) {
   const p = await params
   const path = (p?.path || []).join('/')
   try {
-    const startMatch = path.match(/^oauth\/(meta|google|tiktok)\/url$/)
-    if (startMatch) return oauthStartUrl(request, startMatch[1])
-    if (path === 'ai-insights') return aiInsights(request)
-    if (path === 'users') return createUser(request)
-    if (path === 'users/status') return toggleUserStatus(request)
+    // Endpoint publik
     if (path === 'auth/login') return authLogin(request)
+    if (path === 'auth/logout') return authLogout()
     if (path === 'auth/forgot-password') return forgotPassword(request)
     if (path === 'auth/reset-password') return resetPassword(request)
+    if (path === 'users') return createUser(request) // registrasi publik ATAU Admin menambah tim (dicek di dalam)
+
+    // Endpoint yang butuh login
+    const ADMIN_ONLY = ['users/status','impact-stats','ayrshare/link','digest/weekly/send','digest/weekly/preview','digest/weekly/settings']
+    const startMatch = path.match(/^oauth\/(meta|google|tiktok)\/url$/)
+    const denied = await guard(request, { admin: !!startMatch || ADMIN_ONLY.includes(path) }); if (denied) return denied
+    if (startMatch) return oauthStartUrl(request, startMatch[1])
+    if (path === 'ai-insights') return aiInsights(request)
+    if (path === 'users/status') return toggleUserStatus(request)
     if (path === 'impact-stats') return saveImpactStats(request)
     if (path === 'ayrshare/link') return ayrLink(request)
     if (path === 'ayrshare/post') return ayrPost(request)
@@ -162,6 +200,7 @@ export async function DELETE(request, { params }) {
   const p = await params
   const path = (p?.path || []).join('/')
   try {
+    const denied = await guard(request, { admin: true }); if (denied) return denied
     if (path.startsWith('connections/')) {
       const provider = path.split('/')[1]
       const workspace = await actorWorkspace(request)
@@ -191,7 +230,7 @@ export async function DELETE(request, { params }) {
       const err = await ensureNotLastActiveAdmin(email, workspace)
       if (err) return NextResponse.json({ error: err }, { status: 400 })
       await deleteUserByEmail(email)
-      await logActivity({ action:'user.delete', actor: request.headers.get('x-actor-email') || 'admin', target: email, status:'success', ...reqContext(request) })
+      await logActivity({ action:'user.delete', actor: await actorEmail(request), target: email, status:'success', ...reqContext(request) })
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -222,7 +261,7 @@ async function oauthStartUrl(request, provider) {
     return NextResponse.json({ error: `Kredensial ${p.label} belum diset di server (${p.envs.join(' & ')}).`, missingEnv: p.envs.filter(e => !process.env[e]) }, { status: 400 })
   }
   const state = createOauthState(workspace, provider)
-  await logActivity({ action: `oauth.${provider}.start`, actor: request.headers.get('x-actor-email') || 'admin', status: 'success', ...reqContext(request) }).catch(() => {})
+  await logActivity({ action: `oauth.${provider}.start`, actor: await actorEmail(request), status: 'success', ...reqContext(request) }).catch(() => {})
   return NextResponse.json({ url: p.authUrl(p.redirect(request), state) })
 }
 
@@ -544,9 +583,11 @@ const SEED_USERS = [
 let _seeded = false
 async function ensureSeeded() {
   if (_seeded) return
+  // Akun demo dengan kata sandi yang diketahui publik hanya dibuat bila diminta eksplisit
+  if (process.env.SEED_DEMO_USERS !== 'true') { _seeded = true; return }
   const count = await countUsers()
   if (count === 0) {
-    await seedUsers(SEED_USERS.map(u => ({ ...u, initial: initialsOf(u.name) })))
+    await seedUsers(await Promise.all(SEED_USERS.map(async u => ({ ...u, password: await hashPassword(u.password), initial: initialsOf(u.name) }))))
   }
   _seeded = true
 }
@@ -606,11 +647,19 @@ async function createUser(request) {
   try {
     const existing = email ? await findUserByEmail(email) : null
 
-    // actor hadir hanya kalau request datang dari dalam dashboard (Settings >
-    // Users & Roles, lewat apiFetch yang mengirim header x-actor-email).
-    // Form registrasi publik tidak mengirim header ini.
-    const actorEmail = String(request.headers.get('x-actor-email') || '').trim().toLowerCase()
-    const actor = actorEmail ? await findUserByEmail(actorEmail) : null
+    // Mode Admin hanya bila request datang dari dashboard (apiFetch mengirim
+    // x-actor-email) DAN cookie sesi valid milik email yang sama. Identitas
+    // tetap dari sesi — header hanya membedakan form registrasi publik
+    // dari menu Settings > Users & Roles.
+    const claimed = String(request.headers.get('x-actor-email') || '').trim().toLowerCase()
+    const sessionActor = claimed ? await sessionUser(request) : null
+    if (claimed && (!sessionActor || !safeEqual(sessionActor.email, claimed))) {
+      return NextResponse.json({ error: 'Sesi berakhir. Silakan masuk lagi.' }, { status: 401 })
+    }
+    if (sessionActor && sessionActor.role !== 'Admin') {
+      return NextResponse.json({ error: 'Hanya Admin yang dapat menambah atau mengubah pengguna.' }, { status: 403 })
+    }
+    const actor = sessionActor
     const actingAsAdmin = !!actor
 
     if (!actingAsAdmin && existing) {
@@ -631,18 +680,16 @@ async function createUser(request) {
 
     const orgOwnerEmail = existing?.orgOwnerEmail || actorWorkspaceEmail || email
 
-    const passwordValue = password || existing?.password || ''
-
-    if (!existing && !passwordValue) {
+    if (!existing && !password) {
       return NextResponse.json(
         { error: 'Nama, email, kata sandi, dan peran wajib diisi' },
         { status: 400 }
       )
     }
 
-    if (passwordValue && passwordValue.length < 6) {
+    if (password && password.length < 8) {
       return NextResponse.json(
-        { error: 'Kata sandi minimal 6 karakter' },
+        { error: 'Kata sandi minimal 8 karakter' },
         { status: 400 }
       )
     }
@@ -661,6 +708,9 @@ async function createUser(request) {
       )
     }
 
+    // Kata sandi selalu disimpan sebagai hash scrypt, tidak pernah teks polos
+    const passwordValue = password ? await hashPassword(password) : (existing?.password || '')
+
     const doc = {
       name,
       businessName,
@@ -678,7 +728,7 @@ async function createUser(request) {
 
     await logActivity({
       action: 'user.upsert',
-      actor: request.headers.get('x-actor-email') || 'admin',
+      actor: await actorEmail(request),
       target: email,
       status: 'success',
       meta: {
@@ -721,8 +771,9 @@ async function authLogin(request) {
       await logActivity({ action:'auth.login', actor: email||'anonymous', status:'failure', meta:{ reason:'missing-fields' }, ...ctx })
       return NextResponse.json({ error: 'Email & kata sandi wajib diisi' }, { status: 400 })
     }
-    const doc = await findUserByEmail(email)
-    if (!doc || doc.password !== password) {
+    let doc = await findUserByEmail(email)
+    const check = doc ? await verifyPassword(password, doc.password) : { ok: false }
+    if (!doc || !check.ok) {
       await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason: doc ? 'wrong-password' : 'unknown-email' }, ...ctx })
       return NextResponse.json({ error: 'Email atau kata sandi salah' }, { status: 401 })
     }
@@ -730,11 +781,31 @@ async function authLogin(request) {
       await logActivity({ action:'auth.login', actor: email, status:'failure', meta:{ reason:'inactive' }, ...ctx })
       return NextResponse.json({ error: 'Akun Anda dinonaktifkan. Hubungi admin.' }, { status: 403 })
     }
-    await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role }, ...ctx })
-    return NextResponse.json({ user: { name: doc.name, email: doc.email, role: doc.role, plan: doc.plan || 'starter', orgOwnerEmail: doc.orgOwnerEmail || doc.email, jabatan: doc.jabatan, initial: doc.initial } })
+    if (check.needsRehash) {
+      // Migrasi otomatis: kata sandi lama yang masih polos diganti hash saat login berhasil
+      const hashed = await hashPassword(password)
+      await updatePassword(email, hashed)
+      doc = { ...doc, password: hashed }
+    }
+    await logActivity({ action:'auth.login', actor: email, status:'success', meta:{ role: doc.role, migrated: !!check.needsRehash }, ...ctx })
+    const res = NextResponse.json({ user: publicUser(doc) })
+    res.cookies.set(SESSION_COOKIE, createSessionToken(doc), sessionCookieOptions())
+    return res
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal memproses login' }, { status: 500 })
   }
+}
+
+function authLogout() {
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set(SESSION_COOKIE, '', { ...sessionCookieOptions(), maxAge: 0 })
+  return res
+}
+
+async function authMe(request) {
+  const u = await sessionUser(request)
+  if (!u) return NextResponse.json({ error: 'Belum masuk' }, { status: 401 })
+  return NextResponse.json({ user: publicUser(u) })
 }
 
 async function toggleUserStatus(request) {
@@ -757,7 +828,7 @@ async function toggleUserStatus(request) {
     if (!updated) return NextResponse.json({ error: 'Pengguna tidak ditemukan' }, { status: 404 })
     await logActivity({
       action: 'user.status',
-      actor: request.headers.get('x-actor-email') || 'admin',
+      actor: await actorEmail(request),
       target: email,
       status: 'success',
       meta: { active, role: existing.role, previousActive: existing.active !== false },
@@ -770,14 +841,20 @@ async function toggleUserStatus(request) {
 }
 
 function generateResetCode() {
-  return String(Math.floor(100000 + Math.random() * 900000))
+  return String(randomInt(100000, 1000000))
 }
+const MAX_RESET_ATTEMPTS = 5
+async function resetAttemptsCol() { return (await db()).collection('reset_attempts') }
 
 async function forgotPassword(request) {
   try {
     const body = await request.json().catch(() => ({}))
     const email = String(body.email || '').trim().toLowerCase()
     if (!email) return NextResponse.json({ error: 'Email wajib diisi' }, { status: 400 })
+    // Cek di awal (sebelum mencari user) agar respons tidak membocorkan email mana yang terdaftar
+    if (!hasSmtp() && !(process.env.ALLOW_DEV_RESET_CODE === 'true' && process.env.NODE_ENV !== 'production')) {
+      return NextResponse.json({ error: 'Pengiriman email belum dikonfigurasi di server. Hubungi admin untuk mereset kata sandi.', delivery: 'unavailable' }, { status: 503 })
+    }
     const doc = await findUserByEmail(email)
     if (!doc) {
       // Do not reveal user existence — return success but with a hint dev_code=null
@@ -787,15 +864,22 @@ async function forgotPassword(request) {
     const code = generateResetCode()
     const expires = new Date(Date.now() + 15*60*1000) // 15 minutes
     await setResetCode(email, code, expires)
+    try { (await resetAttemptsCol()).deleteOne({ email }) } catch {}
     // Kirim email OTP via SMTP (nodemailer) jika terkonfigurasi
+    // Kode hanya boleh ditampilkan di layar saat pengembangan. Di produksi,
+    // menampilkannya berarti siapa pun bisa mereset kata sandi akun orang lain.
+    const allowDevCode = process.env.ALLOW_DEV_RESET_CODE === 'true' && process.env.NODE_ENV !== 'production'
     let delivery = 'demo'
-    let dev_code = code
+    let dev_code = allowDevCode ? code : null
     let email_error = null
     if (hasSmtp()) {
       const tpl = otpEmail({ code, expiresMinutes: 15, name: doc.name || '' })
       const result = await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text })
       if (result.ok) { delivery = 'email'; dev_code = null }
       else { email_error = result.error || 'SMTP gagal' }
+    }
+    if (delivery !== 'email' && !allowDevCode) {
+      return NextResponse.json({ error: 'Pengiriman email belum dikonfigurasi di server. Hubungi admin untuk mereset kata sandi.', delivery: 'unavailable' }, { status: 503 })
     }
     return NextResponse.json({
       ok: true,
@@ -819,11 +903,18 @@ async function resetPassword(request) {
     const code = String(body.code || '').trim()
     const newPassword = String(body.new_password || '')
     if (!email || !code || !newPassword) return NextResponse.json({ error: 'Email, kode, dan kata sandi baru wajib diisi' }, { status: 400 })
-    if (newPassword.length < 6) return NextResponse.json({ error: 'Kata sandi baru minimal 6 karakter' }, { status: 400 })
+    if (newPassword.length < 8) return NextResponse.json({ error: 'Kata sandi baru minimal 8 karakter' }, { status: 400 })
+    const attempts = await resetAttemptsCol()
+    const tries = (await attempts.findOne({ email }))?.count || 0
+    if (tries >= MAX_RESET_ATTEMPTS) return NextResponse.json({ error: 'Terlalu banyak percobaan. Minta kode verifikasi baru.' }, { status: 429 })
     const doc = await findUserByEmail(email)
-    if (!doc || !doc.reset_code || doc.reset_code !== code) return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
+    if (!doc || !doc.reset_code || !safeEqual(doc.reset_code, code)) {
+      await attempts.updateOne({ email }, { $inc: { count: 1 }, $set: { updated_at: new Date() } }, { upsert: true })
+      return NextResponse.json({ error: 'Kode verifikasi salah' }, { status: 400 })
+    }
     if (!doc.reset_expires || new Date(doc.reset_expires) < new Date()) return NextResponse.json({ error: 'Kode verifikasi telah kedaluwarsa. Minta kode baru.' }, { status: 400 })
-    await updatePassword(email, newPassword)
+    await updatePassword(email, await hashPassword(newPassword))
+    await attempts.deleteOne({ email })
     return NextResponse.json({ ok: true, message: 'Kata sandi berhasil direset. Silakan masuk dengan kata sandi baru.' })
   } catch (e) {
     return NextResponse.json({ error: e?.message || 'Gagal reset kata sandi' }, { status: 500 })
@@ -863,7 +954,7 @@ async function saveImpactStats(request) {
   if (cleaned.some(s => !s.v || !s.l)) return NextResponse.json({ error: 'Nilai dan label wajib diisi untuk semua statistik' }, { status: 400 })
   const col = await impactStatsCol()
   await col.updateOne({ _id: 'main' }, { $set: { stats: cleaned, updated_at: now } }, { upsert: true })
-  await logActivity({ action:'impact-stats.update', actor: request.headers.get('x-actor-email') || 'admin', status:'success', meta:{ count: cleaned.length }, ...reqContext(request) })
+  await logActivity({ action:'impact-stats.update', actor: await actorEmail(request), status:'success', meta:{ count: cleaned.length }, ...reqContext(request) })
   return NextResponse.json({ ok: true, stats: cleaned, updated_at: now })
 }
 
@@ -950,7 +1041,7 @@ async function ayrLink(request) {
   const body = await request.json().catch(()=>({}))
   const platforms = body.platforms || ['facebook','instagram','youtube','tiktok']
   const ctx = reqContext(request)
-  const actor = request.headers.get('x-actor-email') || 'admin'
+  const actor = await actorEmail(request)
 
   // Pastikan ada profile — jika belum, buat baru
   let stored = await getStoredProfile(workspace)
@@ -1088,7 +1179,7 @@ async function ayrPost(request) {
   if (!workspace) return NextResponse.json({ error: 'Tidak diizinkan' }, { status: 401 })
   const stored = await getStoredProfile(workspace)
   const ctx = reqContext(request)
-  const actor = request.headers.get('x-actor-email') || 'admin'
+  const actor = await actorEmail(request)
   if (!stored?.profileKey) return NextResponse.json({ error: 'Profile belum dibuat' }, { status: 400 })
   const body = await request.json().catch(()=>({}))
   if (!body.post) return NextResponse.json({ error: 'post (caption) wajib diisi' }, { status: 400 })
@@ -1125,7 +1216,7 @@ async function digestSend(request) {
   const r = await sendWeeklyDigest({ recipients })
   await logActivity({
     action:'digest.weekly.send',
-    actor: request.headers.get('x-actor-email') || 'admin',
+    actor: await actorEmail(request),
     status: r.ok ? 'success' : 'failure',
     meta: { recipients: r.recipients, success: r.results?.filter(x=>x.ok).length, total: r.recipients?.length, error: r.error },
     ...reqContext(request),
@@ -1148,7 +1239,7 @@ async function digestSaveSettings(request) {
   if (body.recipients_mode === 'admins' || body.recipients_mode === 'custom') patch.recipients_mode = body.recipients_mode
   if (Array.isArray(body.custom_recipients)) patch.custom_recipients = body.custom_recipients.map(String).map(s=>s.trim().toLowerCase()).filter(e=>/@/.test(e))
   const state = await setDigestState(patch)
-  await logActivity({ action:'digest.settings.update', actor: request.headers.get('x-actor-email') || 'admin', status:'success', meta: patch, ...reqContext(request) })
+  await logActivity({ action:'digest.settings.update', actor: await actorEmail(request), status:'success', meta: patch, ...reqContext(request) })
   return NextResponse.json({ ok: true, state })
 }
 
