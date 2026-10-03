@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
 import { connections, db } from '@/lib/db'
 import {
   findUserByEmail,
@@ -13,9 +12,10 @@ import {
   setResetCode,
   updatePassword,
 } from '@/lib/users-repo'
-import { metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights } from '@/lib/oauth-meta'
-import { googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
-import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokUserInfo, tiktokVideoList } from '@/lib/oauth-tiktok'
+import { GRAPH_VERSION, hasMetaCreds, metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights, metaGetPageInfo, summarizePageInsights, summarizeIgInsights } from '@/lib/oauth-meta'
+import { hasGoogleCreds, googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
+import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokRefreshToken, tiktokUserInfo, tiktokVideoList, summarizeTiktok } from '@/lib/oauth-tiktok'
+import { createOauthState, verifyOauthState } from '@/lib/oauth-state'
 import { hasAyrshareCreds, createProfile, listProfiles, deleteProfile, generateJWT, getUser, socialAnalytics, createPost, history, getStoredProfile, upsertStoredProfile, deleteStoredProfile } from '@/lib/ayrshare'
 import { hasSmtp, sendMail, otpEmail } from '@/lib/mailer'
 import { logActivity, reqContext, listActivity, activitySummary } from '@/lib/activity'
@@ -45,34 +45,52 @@ async function actorWorkspace(request) {
   return actor.orgOwnerEmail || actor.email
 }
 
-/** Encode identitas workspace ke dalam OAuth `state` supaya bisa dibaca lagi di callback. */
-function encodeOauthState(owner) {
-  return Buffer.from(JSON.stringify({ owner: owner || '', nonce: randomUUID() })).toString('base64url')
-}
-function decodeOauthState(state) {
-  try {
-    const parsed = JSON.parse(Buffer.from(String(state || ''), 'base64url').toString('utf8'))
-    return parsed?.owner || ''
-  } catch { return '' }
+const PROVIDERS = {
+  meta:   { label: 'Meta',   configured: hasMetaCreds,   envs: ['META_APP_ID', 'META_APP_SECRET'],             authUrl: metaAuthUrl,   redirect: metaRedirect,   console: 'https://developers.facebook.com/apps' },
+  google: { label: 'Google', configured: hasGoogleCreds, envs: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],   authUrl: googleAuthUrl, redirect: googleRedirect, console: 'https://console.cloud.google.com/apis/credentials' },
+  tiktok: { label: 'TikTok', configured: hasTiktokCreds, envs: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'], authUrl: tiktokAuthUrl, redirect: tiktokRedirect, console: 'https://developers.tiktok.com/apps' },
 }
 
-function popupResponse({ ok, provider, message }) {
+function escapeHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+function htmlPage(body, status = 200) {
+  return new NextResponse(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Koneksi Media Sosial</title></head><body style="font-family:system-ui,-apple-system,sans-serif;background:#F8FAFC;margin:0;padding:40px 20px;color:#0F172A">${body}</body></html>`,
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+}
+
+function popupResponse(request, { ok, provider, message }) {
+  const key = String(provider || '').toLowerCase()
   const isRedirectErr = message && /redirect|whitelist|redirect_uri|not.*allowed|url.*blocked/i.test(message)
+  const redirectUri = PROVIDERS[key]?.redirect(request) || ''
   const helpHtml = isRedirectErr ? `
-    <div style="margin-top:16px;padding:12px;background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:6px;text-align:left;font-size:12px;color:#78350F">
+    <div style="margin-top:16px;padding:12px;background:#FEF3C7;border-left:4px solid #F59E0B;border-radius:8px;text-align:left;font-size:12px;color:#78350F">
       <strong>Redirect URI belum didaftarkan.</strong><br>
-      Tambahkan URL berikut di console app ${provider}, tepat pada kolom OAuth Redirect URIs:<br>
-      <code style="display:block;margin-top:6px;padding:6px;background:#fff;border:1px solid #FCD34D;border-radius:4px;font-size:11px;word-break:break-all">${(process.env.NEXT_PUBLIC_BASE_URL||'').replace(/'/g,'')}/api/oauth/${provider.toLowerCase()}/callback</code>
-      Atau gunakan opsi <strong>"Paste Access Token Manual"</strong> di Settings sebagai workaround.
+      Tambahkan URL berikut di console developer ${escapeHtml(provider)}, pada kolom OAuth Redirect URI:
+      <code style="display:block;margin-top:6px;padding:6px;background:#fff;border:1px solid #FCD34D;border-radius:4px;font-size:11px;word-break:break-all">${escapeHtml(redirectUri)}</code>
     </div>` : ''
-  const html = `<!doctype html><html><body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;max-width:520px;margin:0 auto;">
-    <h2 style="color:${ok?'#059669':'#DC2626'};margin:0 0 8px">${ok?'✅ Berhasil Terhubung ':'⚠️ Gagal Menghubungkan '}${provider}</h2>
-    <p style="color:#64748B;font-size:13px">${message || ''}</p>
+  // postMessage hanya ke origin aplikasi sendiri, bukan '*'
+  const targetOrigin = new URL(baseUrl(request)).origin
+  const payload = JSON.stringify({ type: 'oauth', ok: !!ok, provider: String(provider || ''), message: String(message || '') }).replace(/</g, '\\u003c')
+  return htmlPage(`<div style="max-width:440px;margin:0 auto;background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px;text-align:center;box-shadow:0 1px 3px rgba(15,23,42,.06)">
+    <div style="width:48px;height:48px;border-radius:999px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:22px;background:${ok ? '#ECFDF5' : '#FEF2F2'}">${ok ? '✓' : '!'}</div>
+    <h2 style="font-size:18px;margin:0 0 6px;color:${ok ? '#047857' : '#B91C1C'}">${ok ? 'Berhasil terhubung ke ' : 'Gagal menghubungkan '}${escapeHtml(provider)}</h2>
+    <p style="color:#64748B;font-size:13px;margin:0">${escapeHtml(message)}</p>
     ${helpHtml}
-    <p style="color:#94A3B8;font-size:11px;margin-top:20px">${ok?'Jendela ini akan tertutup otomatis…':'Anda dapat menutup jendela ini.'}</p>
-    <script>try { window.opener && window.opener.postMessage({ type:'oauth', ok:${ok?'true':'false'}, provider:'${provider}', message:${JSON.stringify(message||'')} }, '*') } catch(e){}
-    ${ok ? 'setTimeout(()=>window.close(), 1500)' : ''}</script></body></html>`
-  return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    <p style="color:#94A3B8;font-size:11px;margin-top:18px">${ok ? 'Jendela ini akan tertutup otomatis…' : 'Anda dapat menutup jendela ini.'}</p>
+  </div>
+  <script>try { window.opener && window.opener.postMessage(${payload}, ${JSON.stringify(targetOrigin)}) } catch(e){}
+  ${ok ? 'setTimeout(function(){ window.close() }, 1500)' : ''}</script>`)
+}
+
+/** Validasi state dari callback dan pastikan workspace-nya masih ada. */
+async function resolveCallbackOwner(url, provider) {
+  const v = verifyOauthState(url.searchParams.get('state'), provider)
+  if (v.error) return v
+  const owner = await findUserByEmail(v.owner).catch(() => null)
+  if (!owner) return { error: 'Workspace tidak ditemukan. Silakan masuk ulang lalu coba lagi.' }
+  return { owner: owner.orgOwnerEmail || owner.email }
 }
 
 export async function GET(request, { params }) {
@@ -81,21 +99,11 @@ export async function GET(request, { params }) {
   try {
     if (path === '' || path === 'health') return NextResponse.json({ status: 'ok' })
 
-    if (path === 'oauth/meta/start') {
-      const owner = new URL(request.url).searchParams.get('owner') || ''
-      const state = encodeOauthState(owner)
-      return NextResponse.redirect(metaAuthUrl(metaRedirect(request), state))
-    }
-    if (path === 'oauth/google/start') {
-      const owner = new URL(request.url).searchParams.get('owner') || ''
-      const state = encodeOauthState(owner)
-      return NextResponse.redirect(googleAuthUrl(googleRedirect(request), state))
-    }
-    if (path === 'oauth/tiktok/start') {
-      if (!hasTiktokCreds()) return new NextResponse('<html><body style="font-family:system-ui;padding:40px"><h2 style="color:#DC2626">TikTok credentials belum diset</h2><p>Admin belum mengisi TIKTOK_CLIENT_KEY dan TIKTOK_CLIENT_SECRET pada environment variables server.</p></body></html>', { status: 400, headers:{'Content-Type':'text/html'} })
-      const owner = new URL(request.url).searchParams.get('owner') || ''
-      const state = encodeOauthState(owner)
-      return NextResponse.redirect(tiktokAuthUrl(tiktokRedirect(request), state))
+    if (path === 'oauth/config') return oauthConfig(request)
+    if (/^oauth\/(meta|google|tiktok)\/start$/.test(path)) {
+      // Versi lama memakai ?owner= yang bisa dipalsukan. Popup sekarang dibuka
+      // dari URL hasil POST /api/oauth/{provider}/url (lihat SettingsView).
+      return htmlPage('<div style="max-width:440px;margin:0 auto;text-align:center"><h2>Tautan kedaluwarsa</h2><p style="color:#64748B">Buka <b>Settings → Koneksi Media Sosial</b> di dashboard lalu klik tombol Hubungkan lagi.</p></div>', 410)
     }
     if (path === 'oauth/meta/callback') return metaCallback(request)
     if (path === 'oauth/google/callback') return googleCallback(request)
@@ -129,6 +137,8 @@ export async function POST(request, { params }) {
   const p = await params
   const path = (p?.path || []).join('/')
   try {
+    const startMatch = path.match(/^oauth\/(meta|google|tiktok)\/url$/)
+    if (startMatch) return oauthStartUrl(request, startMatch[1])
     if (path === 'ai-insights') return aiInsights(request)
     if (path === 'users') return createUser(request)
     if (path === 'users/status') return toggleUserStatus(request)
@@ -191,104 +201,136 @@ export async function DELETE(request, { params }) {
 }
 
 /* ================= OAUTH ================= */
+async function oauthConfig(request) {
+  return NextResponse.json({
+    graphVersion: GRAPH_VERSION,
+    providers: Object.fromEntries(Object.entries(PROVIDERS).map(([k, p]) => [k, {
+      label: p.label,
+      configured: p.configured(),
+      missingEnv: p.envs.filter(e => !process.env[e]),
+      redirectUri: p.redirect(request),
+      console: p.console,
+    }])),
+  })
+}
+
+async function oauthStartUrl(request, provider) {
+  const p = PROVIDERS[provider]
+  const workspace = await actorWorkspace(request)
+  if (!workspace) return NextResponse.json({ error: 'Sesi tidak valid. Silakan masuk ulang.' }, { status: 401 })
+  if (!p.configured()) {
+    return NextResponse.json({ error: `Kredensial ${p.label} belum diset di server (${p.envs.join(' & ')}).`, missingEnv: p.envs.filter(e => !process.env[e]) }, { status: 400 })
+  }
+  const state = createOauthState(workspace, provider)
+  await logActivity({ action: `oauth.${provider}.start`, actor: request.headers.get('x-actor-email') || 'admin', status: 'success', ...reqContext(request) }).catch(() => {})
+  return NextResponse.json({ url: p.authUrl(p.redirect(request), state) })
+}
+
+function callbackParams(request, label) {
+  const url = new URL(request.url)
+  const error = url.searchParams.get('error_description') || url.searchParams.get('error')
+  if (error) return { error }
+  const code = url.searchParams.get('code')
+  if (!code) return { error: `Kode otorisasi ${label} tidak diterima` }
+  return { url, code }
+}
+
+async function saveConnection(provider, owner, fields) {
+  const col = await connections()
+  await col.updateOne(
+    { provider, owner_email: owner },
+    { $set: { provider, owner_email: owner, ...fields, needs_reconnect: false, last_error: null, updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+    { upsert: true }
+  )
+}
+
+async function markConnectionError(provider, owner, message, needsReconnect) {
+  try {
+    const col = await connections()
+    await col.updateOne({ provider, owner_email: owner }, { $set: { last_error: message, needs_reconnect: !!needsReconnect, last_error_at: new Date() } })
+  } catch {}
+}
+
 async function metaCallback(request) {
   try {
-    const url = new URL(request.url)
-    const code = url.searchParams.get('code')
-    const error = url.searchParams.get('error_description') || url.searchParams.get('error')
-    if (error) return popupResponse({ ok:false, provider:'Meta', message: error })
-    if (!code) return popupResponse({ ok:false, provider:'Meta', message: 'No code' })
-    const owner = decodeOauthState(url.searchParams.get('state'))
-    if (!owner) return popupResponse({ ok:false, provider:'Meta', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
-    const short = await metaExchangeCode(code, metaRedirect(request))
+    const cp = callbackParams(request, 'Meta')
+    if (cp.error) return popupResponse(request, { ok:false, provider:'Meta', message: cp.error })
+    const ws = await resolveCallbackOwner(cp.url, 'meta')
+    if (ws.error) return popupResponse(request, { ok:false, provider:'Meta', message: ws.error })
+    const short = await metaExchangeCode(cp.code, metaRedirect(request))
     const long = await metaLongLived(short.access_token)
     const pages = await metaGetPages(long.access_token)
+    if (!pages.length) {
+      return popupResponse(request, { ok:false, provider:'Meta', message: 'Tidak ada Facebook Page yang diizinkan. Saat login, pilih minimal satu Page (dan akun Instagram Business yang tertaut ke Page tersebut).' })
+    }
     const igAccounts = []
     pages.forEach(pg => { if (pg.instagram_business_account) igAccounts.push({ ...pg.instagram_business_account, page_id: pg.id, page_name: pg.name }) })
-    const col = await connections()
-    await col.updateOne(
-      { provider: 'meta', owner_email: owner },
-      { $set: {
-        provider: 'meta',
-        owner_email: owner,
-        user_access_token: long.access_token,
-        expires_at: long.expires_in ? new Date(Date.now() + long.expires_in*1000) : null,
-        pages: pages.map(pg => ({ id: pg.id, name: pg.name, access_token: pg.access_token, category: pg.category })),
-        ig_accounts: igAccounts,
-        updated_at: new Date(),
-        created_at: new Date(),
-      } },
-      { upsert: true }
-    )
-    return popupResponse({ ok:true, provider:'Meta', message: `${pages.length} Page & ${igAccounts.length} Instagram Business tersambung` })
+    await saveConnection('meta', ws.owner, {
+      user_access_token: long.access_token,
+      // Page token tidak kedaluwarsa; expires_at di sini hanya untuk user token
+      expires_at: long.expires_in ? new Date(Date.now() + long.expires_in*1000) : null,
+      graph_version: GRAPH_VERSION,
+      pages: pages.map(pg => ({ id: pg.id, name: pg.name, access_token: pg.access_token, category: pg.category })),
+      ig_accounts: igAccounts,
+    })
+    const igNote = igAccounts.length ? `${igAccounts.length} Instagram Business` : 'belum ada Instagram Business yang tertaut ke Page'
+    return popupResponse(request, { ok:true, provider:'Meta', message: `${pages.length} Facebook Page & ${igNote} tersambung` })
   } catch (e) {
-    return popupResponse({ ok:false, provider:'Meta', message: String(e?.message || e) })
+    return popupResponse(request, { ok:false, provider:'Meta', message: String(e?.message || e) })
   }
 }
 
 async function googleCallback(request) {
   try {
-    const url = new URL(request.url)
-    const code = url.searchParams.get('code')
-    const error = url.searchParams.get('error_description') || url.searchParams.get('error')
-    if (error) return popupResponse({ ok:false, provider:'Google', message: error })
-    if (!code) return popupResponse({ ok:false, provider:'Google', message: 'No code' })
-    const owner = decodeOauthState(url.searchParams.get('state'))
-    if (!owner) return popupResponse({ ok:false, provider:'Google', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
-    const t = await googleExchangeCode(code, googleRedirect(request))
+    const cp = callbackParams(request, 'Google')
+    if (cp.error) return popupResponse(request, { ok:false, provider:'Google', message: cp.error })
+    const ws = await resolveCallbackOwner(cp.url, 'google')
+    if (ws.error) return popupResponse(request, { ok:false, provider:'Google', message: ws.error })
+    const t = await googleExchangeCode(cp.code, googleRedirect(request))
+    const col = await connections()
+    const prev = await col.findOne({ provider: 'google', owner_email: ws.owner })
     let channels = [], gaProperties = []
     try { channels = await ytListChannels(t.access_token) } catch (e) { console.warn('yt list', e.message) }
     try { gaProperties = await gaListProperties(t.access_token) } catch (e) { console.warn('ga list', e.message) }
-    const col = await connections()
-    await col.updateOne(
-      { provider: 'google', owner_email: owner },
-      { $set: {
-        provider: 'google',
-        owner_email: owner,
-        access_token: t.access_token,
-        refresh_token: t.refresh_token,
-        expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
-        channels: channels.map(c => ({ id: c.id, title: c.snippet?.title, subscribers: c.statistics?.subscriberCount, videos: c.statistics?.videoCount, views: c.statistics?.viewCount })),
-        ga_properties: gaProperties,
-        updated_at: new Date(),
-        created_at: new Date(),
-      } },
-      { upsert: true }
-    )
-    return popupResponse({ ok:true, provider:'Google', message: `${channels.length} YouTube channel & ${gaProperties.length} GA4 property terdeteksi` })
+    await saveConnection('google', ws.owner, {
+      access_token: t.access_token,
+      // Google hanya mengirim refresh_token pada persetujuan pertama — jangan timpa dengan undefined
+      refresh_token: t.refresh_token || prev?.refresh_token || null,
+      scope: t.scope,
+      expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
+      channels: channels.map(c => ({ id: c.id, title: c.snippet?.title, thumbnail: c.snippet?.thumbnails?.default?.url, subscribers: c.statistics?.subscriberCount, videos: c.statistics?.videoCount, views: c.statistics?.viewCount })),
+      ga_properties: gaProperties,
+    })
+    if (!channels.length && !gaProperties.length) {
+      return popupResponse(request, { ok:true, provider:'Google', message: 'Akun Google tersambung, tetapi tidak ditemukan channel YouTube maupun properti GA4 pada akun ini.' })
+    }
+    return popupResponse(request, { ok:true, provider:'Google', message: `${channels.length} channel YouTube & ${gaProperties.length} properti GA4 terdeteksi` })
   } catch (e) {
-    return popupResponse({ ok:false, provider:'Google', message: String(e?.message || e) })
+    return popupResponse(request, { ok:false, provider:'Google', message: String(e?.message || e) })
   }
 }
 
 async function tiktokCallback(request) {
   try {
-    const url = new URL(request.url)
-    const code = url.searchParams.get('code')
-    const error = url.searchParams.get('error_description') || url.searchParams.get('error')
-    if (error) return popupResponse({ ok:false, provider:'TikTok', message: error })
-    if (!code) return popupResponse({ ok:false, provider:'TikTok', message: 'No code' })
-    const owner = decodeOauthState(url.searchParams.get('state'))
-    if (!owner) return popupResponse({ ok:false, provider:'TikTok', message: 'Sesi tidak valid, silakan buka Settings dan coba lagi.' })
-    const t = await tiktokExchangeCode(code, tiktokRedirect(request))
+    const cp = callbackParams(request, 'TikTok')
+    if (cp.error) return popupResponse(request, { ok:false, provider:'TikTok', message: cp.error })
+    const ws = await resolveCallbackOwner(cp.url, 'tiktok')
+    if (ws.error) return popupResponse(request, { ok:false, provider:'TikTok', message: ws.error })
+    const t = await tiktokExchangeCode(cp.code, tiktokRedirect(request))
     let user = null
     try { user = await tiktokUserInfo(t.access_token) } catch (e) { console.warn('tt user', e.message) }
-    const col = await connections()
-    await col.updateOne(
-      { provider: 'tiktok', owner_email: owner },
-      { $set: {
-        provider: 'tiktok',
-        owner_email: owner,
-        access_token: t.access_token, refresh_token: t.refresh_token,
-        open_id: t.open_id || user?.open_id,
-        expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
-        user, updated_at: new Date(), created_at: new Date(),
-      } },
-      { upsert: true }
-    )
-    return popupResponse({ ok:true, provider:'TikTok', message: user?.display_name ? `Terhubung sebagai ${user.display_name} (${user.follower_count||0} followers)` : 'Terhubung' })
+    await saveConnection('tiktok', ws.owner, {
+      access_token: t.access_token,
+      refresh_token: t.refresh_token,
+      open_id: t.open_id || user?.open_id,
+      scope: t.scope,
+      expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
+      refresh_expires_at: t.refresh_expires_in ? new Date(Date.now() + t.refresh_expires_in*1000) : null,
+      user,
+    })
+    return popupResponse(request, { ok:true, provider:'TikTok', message: user?.display_name ? `Terhubung sebagai ${user.display_name} (${user.follower_count||0} followers)` : 'Akun TikTok tersambung' })
   } catch (e) {
-    return popupResponse({ ok:false, provider:'TikTok', message: String(e?.message || e) })
+    return popupResponse(request, { ok:false, provider:'TikTok', message: String(e?.message || e) })
   }
 }
 
@@ -302,6 +344,8 @@ async function listConnections(request) {
     connected: true,
     updated_at: d.updated_at,
     expires_at: d.expires_at,
+    needs_reconnect: !!d.needs_reconnect,
+    last_error: d.last_error || null,
     pages: (d.pages || []).map(p => ({ id: p.id, name: p.name, category: p.category })),
     ig_accounts: (d.ig_accounts || []).map(a => ({ id: a.id, username: a.username, name: a.name, followers_count: a.followers_count })),
     channels: (d.channels || []).map(c => ({ id: c.id, title: c.title, subscribers: c.subscribers, videos: c.videos, views: c.views })),
@@ -311,15 +355,53 @@ async function listConnections(request) {
 }
 
 /* ============ LIVE DATA ============ */
+const isAuthError = e => e?.code === 190 || e?.code === 'access_token_invalid' || e?.code === 'invalid_grant' || /expired|invalid.*token|session has been invalidated/i.test(e?.message || '')
+
 async function ensureGoogleToken(doc) {
   if (!doc.expires_at || new Date(doc.expires_at) > new Date(Date.now() + 60000)) return doc.access_token
-  if (!doc.refresh_token) return doc.access_token
+  if (!doc.refresh_token) {
+    await markConnectionError('google', doc.owner_email, 'Token Google kedaluwarsa dan tidak ada refresh token. Sambungkan ulang.', true)
+    return doc.access_token
+  }
   try {
     const t = await googleRefreshToken(doc.refresh_token)
     const col = await connections()
-    await col.updateOne({ provider:'google', owner_email: doc.owner_email }, { $set: { access_token: t.access_token, expires_at: new Date(Date.now() + t.expires_in*1000), updated_at: new Date() } })
+    await col.updateOne({ provider:'google', owner_email: doc.owner_email }, { $set: { access_token: t.access_token, expires_at: new Date(Date.now() + t.expires_in*1000), updated_at: new Date(), needs_reconnect: false, last_error: null } })
     return t.access_token
-  } catch { return doc.access_token }
+  } catch (e) {
+    await markConnectionError('google', doc.owner_email, `Refresh token Google gagal: ${e.message}`, e.code === 'invalid_grant')
+    return doc.access_token
+  }
+}
+
+async function ensureTiktokToken(doc) {
+  if (!doc.expires_at || new Date(doc.expires_at) > new Date(Date.now() + 60000)) return doc.access_token
+  if (!doc.refresh_token) return doc.access_token
+  try {
+    const t = await tiktokRefreshToken(doc.refresh_token)
+    const col = await connections()
+    await col.updateOne({ provider:'tiktok', owner_email: doc.owner_email }, { $set: {
+      access_token: t.access_token,
+      refresh_token: t.refresh_token || doc.refresh_token,
+      expires_at: t.expires_in ? new Date(Date.now() + t.expires_in*1000) : null,
+      refresh_expires_at: t.refresh_expires_in ? new Date(Date.now() + t.refresh_expires_in*1000) : doc.refresh_expires_at,
+      updated_at: new Date(), needs_reconnect: false, last_error: null,
+    } })
+    return t.access_token
+  } catch (e) {
+    await markConnectionError('tiktok', doc.owner_email, `Refresh token TikTok gagal: ${e.message}`, true)
+    return doc.access_token
+  }
+}
+
+async function liveError(provider, doc, e, extra = {}) {
+  const reconnect = isAuthError(e)
+  await markConnectionError(provider, doc.owner_email, e.message, reconnect)
+  return NextResponse.json({ connected: true, error: e.message, needs_reconnect: reconnect, ...extra }, { status: 200 })
+}
+
+function daysParam(url, max = 90) {
+  return Math.max(1, Math.min(max, +(url.searchParams.get('days') || 30) || 30))
 }
 
 async function liveFacebook(request) {
@@ -328,14 +410,17 @@ async function liveFacebook(request) {
   const col = await connections()
   const doc = await col.findOne({ provider: 'meta', owner_email: workspace })
   if (!doc || !doc.pages?.length) return NextResponse.json({ connected: false })
-  const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
+  const url = new URL(request.url); const days = daysParam(url)
   const pageId = url.searchParams.get('page_id') || doc.pages[0].id
   const page = doc.pages.find(p => p.id === pageId) || doc.pages[0]
   try {
-    const data = await metaGetPageInsights(page.id, page.access_token, days)
-    return NextResponse.json({ connected: true, page: { id: page.id, name: page.name }, days, raw: data, summary: summarizePageInsights(data) })
+    const [insights, info] = await Promise.all([
+      metaGetPageInsights(page.id, page.access_token, days),
+      metaGetPageInfo(page.id, page.access_token).catch(() => null),
+    ])
+    return NextResponse.json({ connected: true, page: { id: page.id, name: page.name }, days, raw: insights.data, skipped: insights.skipped, summary: summarizePageInsights(insights.data, info) })
   } catch (e) {
-    return NextResponse.json({ connected: true, error: e.message, page: { id: page.id, name: page.name } }, { status: 200 })
+    return liveError('meta', doc, e, { page: { id: page.id, name: page.name } })
   }
 }
 
@@ -345,14 +430,17 @@ async function liveInstagram(request) {
   const col = await connections()
   const doc = await col.findOne({ provider: 'meta', owner_email: workspace })
   if (!doc || !doc.ig_accounts?.length) return NextResponse.json({ connected: false })
-  const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
-  const ig = doc.ig_accounts[0]
+  const url = new URL(request.url); const days = daysParam(url, 30)
+  const igId = url.searchParams.get('ig_id')
+  const ig = doc.ig_accounts.find(a => a.id === igId) || doc.ig_accounts[0]
+  // Pakai token Page yang menautkan akun IG (tidak kedaluwarsa); fallback ke user token
+  const token = doc.pages?.find(p => p.id === ig.page_id)?.access_token || doc.user_access_token
   try {
-    const account = await metaGetIgAccount(ig.id, doc.user_access_token)
-    const insights = await metaGetIgInsights(ig.id, doc.user_access_token, days)
-    return NextResponse.json({ connected: true, account, days, raw: insights, summary: summarizeIgInsights(insights) })
+    const account = await metaGetIgAccount(ig.id, token)
+    const insights = await metaGetIgInsights(ig.id, token, days)
+    return NextResponse.json({ connected: true, account, days, raw: insights.data, skipped: insights.skipped, summary: summarizeIgInsights(insights.data, account) })
   } catch (e) {
-    return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
+    return liveError('meta', doc, e)
   }
 }
 
@@ -362,16 +450,16 @@ async function liveYoutube(request) {
   const col = await connections()
   const doc = await col.findOne({ provider: 'google', owner_email: workspace })
   if (!doc || !doc.channels?.length) return NextResponse.json({ connected: false })
-  const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
-  const ch = doc.channels[0]
+  const url = new URL(request.url); const days = daysParam(url, 365)
+  const ch = doc.channels.find(c => c.id === url.searchParams.get('channel_id')) || doc.channels[0]
   const token = await ensureGoogleToken(doc)
   try {
     const stats = await ytChannelStats(token, ch.id)
     let analytics = null
-    try { analytics = await ytAnalyticsReport(token, ch.id, days) } catch (e) { /* Analytics scope may not be granted */ }
+    try { analytics = await ytAnalyticsReport(token, ch.id, days) } catch (e) { /* scope yt-analytics mungkin tidak diberikan */ }
     return NextResponse.json({ connected: true, channel: { id: ch.id, title: ch.title }, days, stats, analytics, summary: summarizeYt(stats, analytics) })
   } catch (e) {
-    return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
+    return liveError('google', doc, e)
   }
 }
 
@@ -381,17 +469,15 @@ async function liveTiktok(request) {
   const col = await connections()
   const doc = await col.findOne({ provider: 'tiktok', owner_email: workspace })
   if (!doc) return NextResponse.json({ connected: false })
+  const token = await ensureTiktokToken(doc)
   try {
-    let user = doc.user
-    try { user = await tiktokUserInfo(doc.access_token) } catch {}
+    const user = await tiktokUserInfo(token)
     let videos = null
-    try { videos = await tiktokVideoList(doc.access_token) } catch {}
-    return NextResponse.json({ connected: true, user, videos, summary: {
-      followers: user?.follower_count || 0, following: user?.following_count || 0,
-      likes: user?.likes_count || 0, videos: user?.video_count || 0,
-    } })
+    try { videos = await tiktokVideoList(token) } catch (e) { console.warn('tt videos', e.message) }
+    await col.updateOne({ _id: doc._id }, { $set: { user: { ...(doc.user || {}), ...user } } }).catch(() => {})
+    return NextResponse.json({ connected: true, user, videos, summary: summarizeTiktok(user, videos) })
   } catch (e) {
-    return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
+    return liveError('tiktok', doc, e, { user: doc.user, summary: summarizeTiktok(doc.user, null) })
   }
 }
 
@@ -401,43 +487,18 @@ async function liveGa4(request) {
   const col = await connections()
   const doc = await col.findOne({ provider: 'google', owner_email: workspace })
   if (!doc || !doc.ga_properties?.length) return NextResponse.json({ connected: false })
-  const url = new URL(request.url); const days = +(url.searchParams.get('days') || 30)
+  const url = new URL(request.url); const days = daysParam(url, 365)
   const propId = url.searchParams.get('property_id') || doc.ga_properties[0].id
   const token = await ensureGoogleToken(doc)
   try {
     const report = await ga4RunReport(token, propId, days)
     return NextResponse.json({ connected: true, property_id: propId, days, raw: report, summary: summarizeGa4(report) })
   } catch (e) {
-    return NextResponse.json({ connected: true, error: e.message }, { status: 200 })
+    return liveError('google', doc, e)
   }
 }
 
 /* ============ SUMMARIZERS ============ */
-function summarizePageInsights(data) {
-  const byName = {}
-  data.forEach(m => { byName[m.name] = (m.values || []).map(v => v.value) })
-  const sum = arr => (arr||[]).reduce((a,b)=>a+(+b||0),0)
-  return {
-    impressions: sum(byName.page_impressions),
-    reach: sum(byName.page_impressions_unique),
-    engagement: sum(byName.page_post_engagements),
-    videoViews: sum(byName.page_video_views),
-    fansEnd: (byName.page_fans || []).slice(-1)[0] || 0,
-    fansStart: (byName.page_fans || [])[0] || 0,
-  }
-}
-function summarizeIgInsights(data) {
-  const byName = {}
-  data.forEach(m => { byName[m.name] = (m.values || []).map(v => v.value) })
-  const sum = arr => (arr||[]).reduce((a,b)=>a+(+b||0),0)
-  return {
-    reach: sum(byName.reach),
-    impressions: sum(byName.impressions),
-    profileViews: sum(byName.profile_views),
-    websiteClicks: sum(byName.website_clicks),
-    followerCountEnd: (byName.follower_count || []).slice(-1)[0] || 0,
-  }
-}
 function summarizeYt(stats, analytics) {
   const s = stats?.statistics || {}
   const result = {

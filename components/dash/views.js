@@ -700,6 +700,8 @@ export function SettingsView({ plan = 'starter' }) {
   const [flash, setFlash] = useState(null)
   const [ayr, setAyr] = useState(null)
   const [ayrBusy, setAyrBusy] = useState(false)
+  const [oauthCfg, setOauthCfg] = useState(null)
+  const [busyProvider, setBusyProvider] = useState(null)
 
   const loadConns = async () => {
     setLoading(true)
@@ -734,11 +736,17 @@ export function SettingsView({ plan = 'starter' }) {
     try { await apiFetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
     setAyrBusy(false)
   }
+  const loadOauthCfg = async () => {
+    try { const r = await apiFetch('/api/oauth/config'); setOauthCfg(await r.json()) } catch {}
+  }
   useEffect(() => {
     loadConns()
     loadAyr()
+    loadOauthCfg()
     const onMsg = (e) => {
+      if (e.origin !== window.location.origin) return
       if (e.data?.type === 'oauth') {
+        setBusyProvider(null)
         setFlash({ ok: e.data.ok, provider: e.data.provider, message: e.data.message })
         loadConns()
         setTimeout(()=>setFlash(null), 6000)
@@ -748,15 +756,25 @@ export function SettingsView({ plan = 'starter' }) {
     return () => window.removeEventListener('message', onMsg)
   }, [])
 
-  function openOauth(provider) {
-    // Popup adalah navigasi penuh (bukan fetch), jadi identitas workspace
-    // dikirim lewat query param `owner`, bukan header x-actor-email.
-    const u = getCurrentUser()
-    const owner = u?.orgOwnerEmail || u?.email || ''
+  async function openOauth(provider) {
+    // Buka popup kosong lebih dulu (sinkron dengan klik) agar tidak diblokir
+    // browser, lalu minta URL otorisasi bertanda tangan dari server.
     const w = 620, h = 720
     const l = window.screenX + (window.outerWidth - w)/2
     const t = window.screenY + (window.outerHeight - h)/2
-    window.open(`/api/oauth/${provider}/start?owner=${encodeURIComponent(owner)}`, `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+    const popup = window.open('about:blank', `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+    setBusyProvider(provider)
+    try {
+      const r = await apiFetch(`/api/oauth/${provider}/url`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.url) throw new Error(j.error || 'Gagal menyiapkan otorisasi')
+      if (popup && !popup.closed) popup.location.href = j.url
+      else window.location.href = j.url
+    } catch (e) {
+      try { popup && popup.close() } catch {}
+      setBusyProvider(null)
+      setFlash({ ok:false, provider: { meta:'Meta', google:'Google', tiktok:'TikTok' }[provider] || provider, message: String(e?.message || e) })
+    }
   }
   async function disconnect(provider) {
     if (!confirm(`Putuskan koneksi ${provider}? Semua token akan dihapus.`)) return
@@ -767,18 +785,52 @@ export function SettingsView({ plan = 'starter' }) {
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const ALL_TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const ALL_TABS = [ ['accounts','Koneksi Media Sosial'], ['api','Integrasi Lanjutan'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
   const TABS = ALL_TABS.filter(([key]) => allowedTabs.includes(key))
   useEffect(() => { if (!allowedTabs.includes(tab)) setTab(allowedTabs[0] || 'accounts') }, [plan])
   const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
-  const accountsRows = [
-    { platform:'Instagram', handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : 'Belum terhubung', color:'#E1306C', icon:Instagram, connected: !!meta?.ig_accounts?.length, subtitle: meta?.ig_accounts?.[0] && `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers · via Meta` },
-    { platform:'Facebook', handle: meta?.pages?.[0]?.name || 'Belum terhubung', color:'#1877F2', icon:Facebook, connected: !!meta?.pages?.length, subtitle: meta?.pages?.[0] && `Page ID ${meta.pages[0].id.slice(-6)} · via Meta` },
-    { platform:'YouTube', handle: google?.channels?.[0]?.title || 'Belum terhubung', color:'#FF0000', icon:Youtube, connected: !!google?.channels?.length, subtitle: google?.channels?.[0] && `${formatNumber(+google.channels[0].subscribers||0)} subscribers · via Google` },
-    { platform:'TikTok', handle:'Belum terhubung', color:'#111827', icon:Music2, connected: false, subtitle: 'Belum ada credentials TikTok Business API' },
-    { platform:'Website (GA4)', handle: google?.ga_properties?.[0]?.displayName || 'Belum terhubung', color:'#0EA5E9', icon:Globe, connected: !!google?.ga_properties?.length, subtitle: google?.ga_properties?.[0] && `Property ${google.ga_properties[0].id} · via Google` },
+  const tiktok = conns.find(c => c.provider === 'tiktok')
+  const providerCfg = oauthCfg?.providers || {}
+  const platformCards = [
+    { key:'instagram', platform:'Instagram', provider:'meta', color:'#E1306C', icon:Instagram, conn: meta, connected: !!meta?.ig_accounts?.length,
+      handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : null,
+      stat: meta?.ig_accounts?.[0] ? `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers` : null,
+      items: (meta?.ig_accounts||[]).map(a => ({ id:a.id, label:'@'+a.username, sub:`${formatNumber(a.followers_count||0)} followers` })),
+      hint: meta && !meta.ig_accounts?.length ? 'Meta tersambung, tetapi belum ada akun Instagram Business/Creator yang tertaut ke Facebook Page. Tautkan di Meta Business Suite, lalu sambungkan ulang.' : 'Butuh akun Instagram Business/Creator yang tertaut ke Facebook Page.' },
+    { key:'facebook', platform:'Facebook', provider:'meta', color:'#1877F2', icon:Facebook, conn: meta, connected: !!meta?.pages?.length,
+      handle: meta?.pages?.[0]?.name || null,
+      stat: meta?.pages?.length ? `${meta.pages.length} Page terhubung` : null,
+      items: (meta?.pages||[]).map(p => ({ id:p.id, label:p.name, sub:p.category || p.id })),
+      hint: 'Login dengan akun Facebook yang menjadi admin Page.' },
+    { key:'youtube', platform:'YouTube', provider:'google', color:'#FF0000', icon:Youtube, conn: google, connected: !!google?.channels?.length,
+      handle: google?.channels?.[0]?.title || null,
+      stat: google?.channels?.[0] ? `${formatNumber(+google.channels[0].subscribers||0)} subscribers` : null,
+      items: (google?.channels||[]).map(c => ({ id:c.id, label:c.title, sub:`${formatNumber(+c.subscribers||0)} subs · ${formatNumber(+c.videos||0)} video` })),
+      hint: google && !google.channels?.length ? 'Akun Google tersambung, tetapi tidak memiliki channel YouTube. Pilih akun brand yang benar saat login.' : 'Login dengan akun Google pemilik channel.' },
+    { key:'tiktok', platform:'TikTok', provider:'tiktok', color:'#111827', icon:Music2, conn: tiktok, connected: !!tiktok,
+      handle: tiktok?.user?.display_name || (tiktok ? 'Akun TikTok' : null),
+      stat: tiktok?.user ? `${formatNumber(tiktok.user.follower_count||0)} followers · ${formatNumber(tiktok.user.video_count||0)} video` : null,
+      items: [],
+      hint: 'Login dengan akun TikTok Business/Creator.' },
+    { key:'website', platform:'Website (GA4)', provider:'google', color:'#0EA5E9', icon:Globe, conn: google, connected: !!google?.ga_properties?.length,
+      handle: google?.ga_properties?.[0]?.displayName || null,
+      stat: google?.ga_properties?.length ? `${google.ga_properties.length} properti GA4` : null,
+      items: (google?.ga_properties||[]).map(p => ({ id:p.id, label:p.displayName, sub:`${p.parent || ''} · ${p.id}` })),
+      hint: 'Login dengan akun Google yang punya akses ke properti GA4.' },
   ]
+  const liveCount = platformCards.filter(c => c.connected).length
+  const providerLabel = { meta:'Meta', google:'Google', tiktok:'TikTok' }
+  const statusOf = (c) => {
+    if (c.connected && c.conn?.needs_reconnect) return { tone:'amber', label:'Perlu sambung ulang' }
+    if (c.connected) return { tone:'emerald', label:'Live' }
+    if (oauthCfg && providerCfg[c.provider] && !providerCfg[c.provider].configured) return { tone:'slate', label:'Kredensial belum diset' }
+    if (c.conn) return { tone:'amber', label:'Akun tidak ditemukan' }
+    return { tone:'slate', label:'Belum terhubung' }
+  }
+  const toneCls = { emerald:'bg-emerald-50 text-emerald-700 ring-emerald-200', amber:'bg-amber-50 text-amber-700 ring-amber-200', slate:'bg-slate-100 text-slate-600 ring-slate-200' }
+  const dotCls = { emerald:'bg-emerald-500', amber:'bg-amber-500', slate:'bg-slate-400' }
+  const copyText = (t) => { try { navigator.clipboard.writeText(t); setFlash({ ok:true, provider:'Disalin', message:t }); setTimeout(()=>setFlash(null), 2500) } catch {} }
 
   return (
     <div className="space-y-6">
@@ -789,110 +841,96 @@ export function SettingsView({ plan = 'starter' }) {
       )}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
 
-      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Anda"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
-        <div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: a.color+'18', color: a.color }}><Ic className="w-5 h-5" /></div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-slate-900">{a.platform}</div>
-            <div className="text-xs text-slate-500 font-mono">{a.handle}</div>
-            {a.subtitle && <div className="text-[11px] text-slate-500 mt-0.5">{a.subtitle}</div>}
+      {tab==='accounts' && (
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 flex flex-wrap items-center gap-5">
+            <div className="flex-1 min-w-[220px]">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400 font-semibold">Status koneksi</div>
+              <div className="text-2xl font-semibold mt-1">{liveCount} dari {platformCards.length} sumber data live</div>
+              <div className="text-sm text-slate-300 mt-1">Sumber yang belum terhubung masih menampilkan data contoh (mock).</div>
+            </div>
+            <div className="flex gap-1.5" aria-hidden="true">{platformCards.map(c => { const Ic = c.icon; return (
+              <div key={c.key} title={c.platform} className={`w-10 h-10 rounded-xl flex items-center justify-center ring-1 ${c.connected ? 'bg-white/10 ring-white/20' : 'bg-white/[0.03] ring-white/10 opacity-40'}`}><Ic className="w-5 h-5" /></div>
+            )})}</div>
+            <button onClick={()=>{ loadConns(); loadOauthCfg() }} disabled={loading} className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-60">{loading ? 'Memuat…' : 'Muat ulang status'}</button>
           </div>
-          {a.connected ? (
-            <span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Live · Connected</span>
-          ) : (
-            <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">Mock Data</span>
-          )}
-        </div>)})}</div></Card>)}
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {platformCards.map(c => {
+              const Ic = c.icon
+              const st = statusOf(c)
+              const cfg = providerCfg[c.provider]
+              const notConfigured = oauthCfg && cfg && !cfg.configured
+              const busy = busyProvider === c.provider
+              return (
+                <div key={c.key} className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: c.color+'14', color: c.color }}><Ic className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-900">{c.platform}</div>
+                      <div className="text-xs text-slate-500 truncate">{c.handle || `via ${providerLabel[c.provider]}`}</div>
+                    </div>
+                    <span className={`text-[11px] px-2 py-1 rounded-full ring-1 inline-flex items-center gap-1.5 font-medium whitespace-nowrap ${toneCls[st.tone]}`}><span className={`w-1.5 h-1.5 rounded-full ${dotCls[st.tone]} ${st.tone==='emerald'?'animate-pulse':''}`} />{st.label}</span>
+                  </div>
+
+                  {c.connected ? (
+                    <div className="text-sm text-slate-700">{c.stat}</div>
+                  ) : (
+                    <div className="text-xs text-slate-500 leading-relaxed">{notConfigured ? <>Admin server perlu mengisi {cfg.missingEnv.map((e,i)=><span key={e}>{i>0 && ' & '}<code className="bg-slate-100 px-1 rounded text-[10px]">{e}</code></span>)}. Lihat tab Integrasi Lanjutan.</> : c.hint}</div>
+                  )}
+
+                  {c.conn?.last_error && (
+                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 leading-relaxed">{c.conn.last_error}</div>
+                  )}
+
+                  {c.items.length > 1 && (
+                    <details className="text-xs text-slate-600">
+                      <summary className="cursor-pointer select-none text-slate-500 hover:text-slate-700">{c.items.length} akun tersedia</summary>
+                      <ul className="mt-2 space-y-1">{c.items.map(it => <li key={it.id} className="flex justify-between gap-2"><span className="font-medium text-slate-700 truncate">{it.label}</span><span className="text-slate-400 truncate">{it.sub}</span></li>)}</ul>
+                    </details>
+                  )}
+
+                  <div className="mt-auto pt-1 flex items-center gap-2">
+                    {c.connected && !c.conn?.needs_reconnect ? (
+                      <>
+                        <button onClick={()=>openOauth(c.provider)} disabled={busy} className="flex-1 text-xs px-3 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-60">{busy ? 'Membuka…' : 'Sambungkan ulang'}</button>
+                        <button onClick={()=>disconnect(c.provider)} className="text-xs px-3 py-2 rounded-lg text-red-600 hover:bg-red-50">Putuskan</button>
+                      </>
+                    ) : (
+                      <button onClick={()=>openOauth(c.provider)} disabled={busy || notConfigured} className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: c.provider==='google' ? '#1F2937' : c.color }}>
+                        {busy ? 'Membuka jendela login…' : `${c.conn?.needs_reconnect ? 'Sambungkan ulang' : 'Hubungkan'} ${providerLabel[c.provider]}`}
+                      </button>
+                    )}
+                  </div>
+                  {(c.provider === 'meta' || c.provider === 'google') && !c.connected && (
+                    <div className="text-[10px] text-slate-400 -mt-1">Satu login {providerLabel[c.provider]} sekaligus menghubungkan {c.provider==='meta' ? 'Instagram & Facebook' : 'YouTube & GA4'}.</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {tab==='api' && (
         <div className="space-y-4">
-          <Card title="Meta OAuth (Instagram + Facebook)" desc="Hubungkan akun Facebook Business untuk otorisasi Facebook Page + Instagram Business Account">
-            <div className="flex items-center gap-3 flex-wrap">
-              {meta ? (
-                <>
-                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{meta.pages?.length || 0} Facebook Page · {meta.ig_accounts?.length || 0} Instagram Business · Diperbarui {meta.updated_at ? new Date(meta.updated_at).toLocaleString('id-ID') : '—'}</div></div>
-                  <button onClick={()=>openOauth('meta')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                  <button onClick={()=>disconnect('meta')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                </>
-              ) : (
-                <>
-                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data Instagram & Facebook masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/meta/callback</code> sudah terdaftar di Meta App {process.env.NEXT_PUBLIC_META_APP_ID || ''}</div></div>
-                  <button onClick={()=>openOauth('meta')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1877F2] text-white text-sm font-medium hover:bg-[#166FE5]"><Facebook className="w-4 h-4" />Hubungkan Meta</button>
-                </>
-              )}
-            </div>
-            {meta?.pages?.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Facebook Pages Terhubung</div>
-                <div className="space-y-1.5">{meta.pages.map(pg => <div key={pg.id} className="flex items-center gap-2 text-xs"><Facebook className="w-3.5 h-3.5 text-[#1877F2]" /><span className="font-medium text-slate-700">{pg.name}</span><span className="text-slate-500 font-mono">{pg.id}</span></div>)}</div>
-              </div>
-            )}
-            {meta?.ig_accounts?.length > 0 && (
-              <div className="mt-3 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Instagram Business Accounts</div>
-                <div className="space-y-1.5">{meta.ig_accounts.map(ig => <div key={ig.id} className="flex items-center gap-2 text-xs"><Instagram className="w-3.5 h-3.5 text-[#E1306C]" /><span className="font-medium text-slate-700">@{ig.username}</span><span className="text-slate-500">{formatNumber(ig.followers_count||0)} followers</span></div>)}</div>
-              </div>
-            )}
-          </Card>
-
-          <Card title="Google OAuth (YouTube + Analytics 4)" desc="Hubungkan akun Google untuk mengakses channel YouTube dan properti GA4">
-            <div className="flex items-center gap-3 flex-wrap">
-              {google ? (
-                <>
-                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{google.channels?.length || 0} YouTube Channel · {google.ga_properties?.length || 0} GA4 Property · Diperbarui {google.updated_at ? new Date(google.updated_at).toLocaleString('id-ID') : '—'}</div></div>
-                  <button onClick={()=>openOauth('google')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                  <button onClick={()=>disconnect('google')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                </>
-              ) : (
-                <>
-                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data YouTube & Website (GA4) masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/google/callback</code> sudah terdaftar di Google Cloud Console</div></div>
-                  <button onClick={()=>openOauth('google')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-sm font-medium hover:bg-slate-50"><svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC04" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Hubungkan Google</button>
-                </>
-              )}
-            </div>
-            {google?.channels?.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">YouTube Channels</div>
-                <div className="space-y-1.5">{google.channels.map(ch => <div key={ch.id} className="flex items-center gap-2 text-xs"><Youtube className="w-3.5 h-3.5 text-red-600" /><span className="font-medium text-slate-700">{ch.title}</span><span className="text-slate-500">{formatNumber(+ch.subscribers||0)} subs · {formatNumber(+ch.videos||0)} videos</span></div>)}</div>
-              </div>
-            )}
-            {google?.ga_properties?.length > 0 && (
-              <div className="mt-3 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">GA4 Properties</div>
-                <div className="space-y-1.5">{google.ga_properties.map(pr => <div key={pr.id} className="flex items-center gap-2 text-xs"><Globe className="w-3.5 h-3.5 text-sky-600" /><span className="font-medium text-slate-700">{pr.displayName}</span><span className="text-slate-500 font-mono">{pr.id}</span></div>)}</div>
-              </div>
-            )}
-          </Card>
-
-          <Card title="TikTok Business API" desc="Hubungkan akun TikTok Business/Creator untuk analitik follower dan video">
-            {(() => {
-              const tt = conns.find(c => c.provider === 'tiktok')
-              const [credCheck, setCredCheck] = [null, ()=>{}] // just derived
-              return (
-                <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:'#11182718', color:'#111827' }}><Music2 className="w-5 h-5" /></div>
-                    <div className="flex-1 min-w-0">
-                      {tt ? (
-                        <><div className="text-sm font-medium text-emerald-700">✅ Tersambung sebagai {tt.user?.display_name || 'TikTok User'}</div>
-                        <div className="text-xs text-slate-500">{formatNumber(tt.user?.follower_count||0)} followers · {formatNumber(tt.user?.video_count||0)} videos · Diperbarui {tt.updated_at ? new Date(tt.updated_at).toLocaleString('id-ID') : '—'}</div></>
-                      ) : (
-                        <><div className="font-medium text-slate-900">Belum tersambung</div>
-                        <div className="text-xs text-slate-500">Set env <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_KEY</code> &amp; <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_SECRET</code> dari <a href="https://developers.tiktok.com/" className="text-blue-600 underline" target="_blank">TikTok for Developers</a>, dan daftarkan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/tiktok/callback</code></div></>
-                      )}
-                    </div>
-                    {tt ? (
-                      <>
-                        <button onClick={()=>openOauth('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                        <button onClick={()=>disconnect('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                      </>
-                    ) : (
-                      <button onClick={()=>openOauth('tiktok')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-black text-white text-sm font-medium hover:bg-slate-800"><Music2 className="w-4 h-4" />Hubungkan TikTok</button>
-                    )}
+          <Card title="Setup Aplikasi Developer" desc={`Daftarkan Redirect URI berikut di console masing-masing platform. Meta Graph API ${oauthCfg?.graphVersion || ''}.`}>
+            <div className="space-y-3">
+              {Object.entries(providerCfg).map(([key, cfg]) => (
+                <div key={key} className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="font-medium text-slate-900">{cfg.label}</div>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${cfg.configured ? toneCls.emerald : toneCls.amber}`}>{cfg.configured ? 'Kredensial terpasang' : `Belum diset: ${cfg.missingEnv.join(', ')}`}</span>
+                    <a href={cfg.console} target="_blank" rel="noreferrer" className="ml-auto text-xs text-blue-600 hover:underline">Buka console ↗</a>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="flex-1 min-w-0 truncate text-[11px] bg-slate-50 border border-slate-200 rounded-md px-2 py-1.5 text-slate-700">{cfg.redirectUri}</code>
+                    <button onClick={()=>copyText(cfg.redirectUri)} className="text-xs px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200">Salin</button>
                   </div>
                 </div>
-              )
-            })()}
+              ))}
+              {!oauthCfg && <div className="text-xs text-slate-500">Memuat konfigurasi…</div>}
+            </div>
           </Card>
 
           <Card title="Ayrshare — Multi-Platform via 1 Integrasi" desc="Alternatif terpadu: hubungkan Instagram, Facebook, YouTube & TikTok via Ayrshare (tanpa perlu OAuth manual per platform)">
