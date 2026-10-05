@@ -1,21 +1,19 @@
 import Link from 'next/link'
+import Logo from './Logo'
 
 export default function SiteFooter({ lang = 'id' }) {
   const isId = lang === 'id'
   return (
-    <footer className="border-t border-slate-200 px-6 py-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-        <span>© 2026 SocialPulse</span>
-        <div className="flex flex-wrap gap-6">
-          <Link href={`/pricing?lang=${lang}`} className="hover:text-slate-900">
-            {isId ? 'Harga' : 'Pricing'}
-          </Link>
-          <Link href={`/terms?lang=${lang}`} className="hover:text-slate-900">
-            {isId ? 'Syarat & Ketentuan' : 'Terms & Conditions'}
-          </Link>
-          <Link href={`/privacy?lang=${lang}`} className="hover:text-slate-900">
-            {isId ? 'Kebijakan Privasi' : 'Privacy Policy'}
-          </Link>
+    <footer className="bg-ink text-white/60">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex flex-col gap-2">
+          <Logo lang={lang} tone="light" />
+          <span className="text-[13px]">© {new Date().getFullYear()} SocialPulse</span>
+        </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-[14px]">
+          <Link href={`/pricing?lang=${lang}`} className="hover:text-white">{isId ? 'Harga' : 'Pricing'}</Link>
+          <Link href={`/terms?lang=${lang}`} className="hover:text-white">{isId ? 'Syarat & ketentuan' : 'Terms & conditions'}</Link>
+          <Link href={`/privacy?lang=${lang}`} className="hover:text-white">{isId ? 'Kebijakan privasi' : 'Privacy policy'}</Link>
         </div>
       </div>
     </footer>

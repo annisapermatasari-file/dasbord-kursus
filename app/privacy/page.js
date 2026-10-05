@@ -8,7 +8,7 @@ export default async function PrivacyPage({ searchParams }) {
   const isEnglish = language === 'en'
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
+    <main className="min-h-screen bg-paper text-ink">
 
       <SiteHeader lang={language} basePath="/privacy" variant="full" />
 
@@ -18,28 +18,28 @@ export default async function PrivacyPage({ searchParams }) {
 
           <Link
             href={`/register?lang=${language}`}
-            className="text-sm text-blue-600 hover:text-blue-700"
+            className="text-sm text-signal hover:text-signal-deep"
           >
             ← {isEnglish ? 'Back to registration' : 'Kembali ke registrasi'}
           </Link>
 
-          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
             {isEnglish
               ? 'Privacy Policy'
               : 'Kebijakan Privasi'}
           </h1>
 
-          <p className="mt-3 text-sm text-slate-400">
+          <p className="mt-3 text-sm text-ink-muted">
             {isEnglish
               ? 'Last updated: August 15, 2026'
               : 'Terakhir diperbarui: 15 Agustus 2026'}
           </p>
 
-          <div className="mt-10 space-y-8 text-slate-600">
+          <div className="mt-10 space-y-8 text-ink-soft">
 
             {/* 1 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '1. Introduction'
                   : '1. Pendahuluan'}
@@ -54,7 +54,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 2 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '2. Information We Collect'
                   : '2. Informasi yang Kami Kumpulkan'}
@@ -69,7 +69,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 3 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '3. Social Media Data'
                   : '3. Data Media Sosial'}
@@ -84,7 +84,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 4 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '4. How We Use Information'
                   : '4. Bagaimana Kami Menggunakan Informasi'}
@@ -99,7 +99,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 5 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '5. IP Address and Technical Information'
                   : '5. Alamat IP dan Informasi Teknis'}
@@ -114,7 +114,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 6 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '6. Third-Party Services'
                   : '6. Layanan Pihak Ketiga'}
@@ -129,7 +129,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 7 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '7. Data Security'
                   : '7. Keamanan Data'}
@@ -144,7 +144,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 8 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '8. Data Retention'
                   : '8. Penyimpanan Data'}
@@ -159,7 +159,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 9 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '9. Your Choices'
                   : '9. Pilihan Anda'}
@@ -174,7 +174,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 10 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '10. Changes to This Privacy Policy'
                   : '10. Perubahan Kebijakan Privasi'}
@@ -189,7 +189,7 @@ export default async function PrivacyPage({ searchParams }) {
 
             {/* 11 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '11. Contact'
                   : '11. Kontak'}
