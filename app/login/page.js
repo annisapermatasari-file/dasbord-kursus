@@ -3,19 +3,19 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import SiteHeader from '@/components/marketing/SiteHeader'
+import AuthShell, { field, label, primaryBtn, secondaryBtn, textLink, errorBox, okBox } from '@/components/marketing/AuthShell'
 
 const T = {
   en: {
     badge: 'WELCOME BACK',
-    title: 'Sign in to your account',
-    subtitle: 'Use your account to continue to your dashboard.',
+    title: 'Welcome back',
+    subtitle: 'Sign in to see how your channels are doing.',
     registered: 'Your account has been created. Please sign in.',
     email: 'Email',
     password: 'Password',
     emailPlaceholder: 'you@example.com',
     passwordPlaceholder: 'Enter your password',
-    login: 'Sign In',
+    login: 'Sign in',
     loggingIn: 'Signing in…',
     forgot: 'Forgot password?',
     noAccount: "Don't have an account?",
@@ -26,11 +26,11 @@ const T = {
   },
   id: {
     badge: 'SELAMAT DATANG KEMBALI',
-    title: 'Masuk ke akun Anda',
-    subtitle: 'Gunakan akun Anda untuk melanjutkan ke dashboard.',
+    title: 'Selamat datang kembali',
+    subtitle: 'Masuk untuk melihat performa kanal Anda.',
     registered: 'Akun Anda berhasil dibuat. Silakan masuk.',
     email: 'Email',
-    password: 'Kata Sandi',
+    password: 'Kata sandi',
     emailPlaceholder: 'anda@example.com',
     passwordPlaceholder: 'Masukkan kata sandi',
     login: 'Masuk',
@@ -96,93 +96,42 @@ function LoginCard({ language, registered, onForgot, router }) {
     }
   }
 
+  const hide = language === 'id' ? 'Sembunyikan' : 'Hide'
+  const show = language === 'id' ? 'Lihat' : 'Show'
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <SiteHeader lang={language} basePath="/login" variant="minimal" />
+    <AuthShell lang={language} basePath="/login" title={t.title} subtitle={t.subtitle}
+      footer={<>{t.noAccount}{' '}<Link href={`/register?lang=${language}`} className={textLink}>{t.register}</Link></>}>
+      {registered && <div className={`${okBox} mb-5`} role="status">{t.registered}</div>}
 
-      <div className="mx-auto max-w-md px-6 py-16">
-
-        <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold tracking-wide text-slate-600">
-            {t.badge}
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">{t.title}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-500">{t.subtitle}</p>
+      <form onSubmit={submit} noValidate>
+        <div className="mb-4">
+          <label htmlFor="email" className={label}>{t.email}</label>
+          <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder={t.emailPlaceholder} autoComplete="username" className={field} />
         </div>
 
-        {registered && (
-          <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">
-            {t.registered}
+        <div className="mb-2">
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <label htmlFor="password" className={label.replace('mb-1.5 ', '')}>{t.password}</label>
+            <button type="button" onClick={onForgot} className={`text-[13px] ${textLink}`}>{t.forgot}</button>
           </div>
-        )}
-
-        <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-          <div className="mb-4">
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">{t.email}</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t.emailPlaceholder}
-              autoComplete="username"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-            />
-          </div>
-
-          <div className="mb-5">
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">{t.password}</label>
-            <div className="relative">
-              <input
-                type={showPw ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={t.passwordPlaceholder}
-                autoComplete="current-password"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw((v) => !v)}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                {showPw ? (language === 'id' ? 'Sembunyikan' : 'Hide') : (language === 'id' ? 'Lihat' : 'Show')}
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? t.loggingIn : t.login}
-          </button>
-
-          <div className="mt-5 flex items-center justify-between text-sm">
-            <button type="button" onClick={onForgot} className="font-semibold text-blue-600 hover:text-blue-700">
-              {t.forgot}
+          <div className="relative">
+            <input id="password" type={showPw ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder={t.passwordPlaceholder} autoComplete="current-password" className={`${field} pr-24`} />
+            <button type="button" onClick={() => setShowPw((v) => !v)} aria-pressed={showPw}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-3 py-1.5 text-[13px] font-medium text-ink-muted hover:bg-ink/[0.05] hover:text-ink">
+              {showPw ? hide : show}
             </button>
-            <span className="text-slate-500">
-              {t.noAccount}{' '}
-              <Link href={`/register?lang=${language}`} className="font-semibold text-blue-600 hover:text-blue-700">
-                {t.register}
-              </Link>
-            </span>
           </div>
+        </div>
 
-        </form>
+        {error && <div className={`${errorBox} mt-4`} role="alert">{error}</div>}
 
-      </div>
-    </main>
+        <button type="submit" disabled={loading} className={`${primaryBtn} mt-6`}>
+          {loading ? t.loggingIn : t.login}
+        </button>
+      </form>
+    </AuthShell>
   )
 }
 
@@ -192,51 +141,51 @@ const FT = {
     title1: 'Reset your password',
     subtitle1: 'Enter your account email. We will send a verification code.',
     email: 'Email',
-    send: 'Send Verification Code',
+    send: 'Send verification code',
     sending: 'Sending…',
-    title2: 'Verify & set a new password',
+    title2: 'Enter the code and a new password',
     sentTo: 'Verification code sent to',
-    demoTitle: 'Demo Mode — Email Service Not Connected',
+    demoTitle: 'Development mode: email not connected',
     demoDesc: 'Your verification code is shown here because SMTP/SendGrid is not configured. In production the code is delivered by email.',
     autofill: 'Autofill',
     demoNone: 'If your email is registered, a verification code has been sent. Check your inbox and spam folder.',
-    code: 'Verification Code',
+    code: 'Verification code',
     codePlaceholder: '6-digit code',
-    newPassword: 'New Password',
+    newPassword: 'New password',
     newPasswordPlaceholder: 'At least 8 characters',
-    changeEmail: 'Change Email',
-    reset: 'Reset Password',
+    changeEmail: 'Change email',
+    reset: 'Save new password',
     resetting: 'Processing…',
-    doneTitle: 'Password reset successful',
+    doneTitle: 'Your password has been changed',
     doneDesc: 'Please sign in again using your new password.',
-    doneCta: 'Back to sign in →',
+    doneCta: 'Sign in now',
     errRequestGeneric: 'Failed to request reset code.',
     errResetGeneric: 'Failed to reset password.',
     errServer: 'Server error',
   },
   id: {
     back: 'Kembali ke halaman masuk',
-    title1: 'Reset Kata Sandi',
+    title1: 'Atur ulang kata sandi',
     subtitle1: 'Masukkan email akun Anda. Kami akan kirim kode verifikasi.',
     email: 'Email',
-    send: 'Kirim Kode Verifikasi',
+    send: 'Kirim kode verifikasi',
     sending: 'Mengirim…',
-    title2: 'Verifikasi & Kata Sandi Baru',
+    title2: 'Masukkan kode dan kata sandi baru',
     sentTo: 'Kode verifikasi dikirim ke',
-    demoTitle: 'Mode Demo — Email Service Belum Diaktifkan',
+    demoTitle: 'Mode pengembangan: email belum aktif',
     demoDesc: 'Kode verifikasi ditampilkan di sini karena SMTP/SendGrid belum disambungkan. Di produksi kode akan dikirim ke email.',
     autofill: 'Isi otomatis',
     demoNone: 'Jika email Anda terdaftar, kode verifikasi telah dikirim. Cek folder inbox dan spam.',
-    code: 'Kode Verifikasi',
+    code: 'Kode verifikasi',
     codePlaceholder: '6 digit angka',
-    newPassword: 'Kata Sandi Baru',
+    newPassword: 'Kata sandi baru',
     newPasswordPlaceholder: 'Minimal 8 karakter',
-    changeEmail: 'Ganti Email',
-    reset: 'Reset Kata Sandi',
+    changeEmail: 'Ganti email',
+    reset: 'Simpan kata sandi baru',
     resetting: 'Memproses…',
-    doneTitle: 'Kata Sandi Berhasil Direset',
+    doneTitle: 'Kata sandi sudah diganti',
     doneDesc: 'Silakan masuk kembali menggunakan kata sandi baru Anda.',
-    doneCta: 'Ke Halaman Masuk →',
+    doneCta: 'Masuk sekarang',
     errRequestGeneric: 'Gagal meminta kode reset.',
     errResetGeneric: 'Gagal reset kata sandi.',
     errServer: 'Server error',
@@ -278,105 +227,63 @@ function ForgotPasswordCard({ language, onBack }) {
     setLoading(false)
   }
 
+  const titles = { 1: [t.title1, t.subtitle1], 2: [t.title2, <>{t.sentTo} <span className="font-semibold text-ink">{masked}</span></>], 3: [t.doneTitle, t.doneDesc] }
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      <SiteHeader lang={language} basePath="/login" variant="minimal" />
+    <AuthShell lang={language} basePath="/login" title={titles[step][0]} subtitle={titles[step][1]}
+      footer={step !== 3 && <button onClick={onBack} className={textLink}>{t.back}</button>}>
+      {step === 1 && (
+        <form onSubmit={requestCode}>
+          <label htmlFor="reset-email" className={label}>{t.email}</label>
+          <input id="reset-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder={language === 'id' ? 'anda@email.com' : 'you@email.com'} autoComplete="email" className={field} />
+          {error && <div className={`${errorBox} mt-4`} role="alert">{error}</div>}
+          <button type="submit" disabled={loading} className={`${primaryBtn} mt-6`}>{loading ? t.sending : t.send}</button>
+        </form>
+      )}
 
-      <div className="mx-auto max-w-md px-6 py-16">
-        <button onClick={onBack} className="mb-6 text-sm text-slate-400 hover:text-slate-700">← {t.back}</button>
-
-        {step === 1 && (
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.title1}</h1>
-            <p className="mt-2 text-sm text-slate-500">{t.subtitle1}</p>
-            <form onSubmit={requestCode} className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">{t.email}</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="anda@email.com"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-              />
-              {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
-              <button type="submit" disabled={loading} className="mt-5 w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">
-                {loading ? t.sending : t.send}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t.title2}</h1>
-            <p className="mt-2 text-sm text-slate-500">{t.sentTo} <span className="font-mono text-slate-700">{masked}</span></p>
-
-            {devCode !== null && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-amber-700">{t.demoTitle}</div>
-                <div className="mt-1 text-xs text-amber-800">{t.demoDesc}</div>
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="flex-1 rounded-lg border border-amber-200 bg-white py-3 text-center font-mono text-2xl font-bold tracking-widest text-amber-900">{devCode}</div>
-                  <button type="button" onClick={() => setCode(devCode)} className="rounded-lg bg-amber-200 px-3 py-2 text-xs font-medium text-amber-900 hover:bg-amber-300">{t.autofill}</button>
-                </div>
+      {step === 2 && (
+        <>
+          {devCode !== null ? (
+            <div className="mb-5 rounded-xl bg-marigold-soft p-4">
+              <div className="text-[13px] font-bold text-marigold-deep">{t.demoTitle}</div>
+              <div className="mt-1 text-[13px] text-marigold-deep/80">{t.demoDesc}</div>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex-1 rounded-lg bg-white py-2.5 text-center text-[24px] font-extrabold tracking-[0.3em] text-ink tabular">{devCode}</div>
+                <button type="button" onClick={() => setCode(devCode)} className="rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-marigold-deep hover:bg-white/80">{t.autofill}</button>
               </div>
-            )}
-            {devCode === null && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">{t.demoNone}</div>
-            )}
-
-            <form onSubmit={submitReset} className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4">
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">{t.code}</label>
-                <input
-                  type="text"
-                  required
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder={t.codePlaceholder}
-                  maxLength={6}
-                  inputMode="numeric"
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-center text-sm font-mono tracking-widest text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                />
-              </div>
-              <div className="mb-5">
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">{t.newPassword}</label>
-                <input
-                  type="password"
-                  required
-                  value={newPw}
-                  onChange={(e) => setNewPw(e.target.value)}
-                  placeholder={t.newPasswordPlaceholder}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100"
-                />
-              </div>
-              {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => { setStep(1); setCode(''); setNewPw(''); setError('') }} className="rounded-lg border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  {t.changeEmail}
-                </button>
-                <button type="submit" disabled={loading} className="flex-1 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">
-                  {loading ? t.resetting : t.reset}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-              <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
-            <h2 className="mt-4 text-xl font-bold text-slate-900">{t.doneTitle}</h2>
-            <p className="mt-2 text-sm text-slate-500">{t.doneDesc}</p>
-            <button onClick={onBack} className="mt-6 inline-block rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
-              {t.doneCta}
-            </button>
+          ) : (
+            <div className="mb-5 rounded-xl border border-ink/10 bg-white p-4 text-[14px] text-ink-muted">{t.demoNone}</div>
+          )}
+          <form onSubmit={submitReset}>
+            <div className="mb-4">
+              <label htmlFor="code" className={label}>{t.code}</label>
+              <input id="code" type="text" required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder={t.codePlaceholder} maxLength={6} inputMode="numeric" autoComplete="one-time-code"
+                className={`${field} text-center text-[20px] font-bold tracking-[0.4em] tabular`} />
+            </div>
+            <div>
+              <label htmlFor="new-password" className={label}>{t.newPassword}</label>
+              <input id="new-password" type="password" required value={newPw} onChange={(e) => setNewPw(e.target.value)}
+                placeholder={t.newPasswordPlaceholder} autoComplete="new-password" className={field} />
+            </div>
+            {error && <div className={`${errorBox} mt-4`} role="alert">{error}</div>}
+            <div className="mt-6 flex items-center gap-2">
+              <button type="button" onClick={() => { setStep(1); setCode(''); setNewPw(''); setError('') }} className={secondaryBtn}>{t.changeEmail}</button>
+              <button type="submit" disabled={loading} className={`${primaryBtn} flex-1`}>{loading ? t.resetting : t.reset}</button>
+            </div>
+          </form>
+        </>
+      )}
+
+      {step === 3 && (
+        <div>
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-growth-soft text-growth">
+            <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-        )}
-      </div>
-    </main>
+          <button onClick={onBack} className={`${primaryBtn} mt-6`}>{t.doneCta}</button>
+        </div>
+      )}
+    </AuthShell>
   )
 }

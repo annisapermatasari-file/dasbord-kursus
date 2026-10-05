@@ -31,72 +31,52 @@ export default async function PricingPage({ searchParams }) {
   const language = isEnglish ? 'en' : 'id'
   const currentPlans = plans[language]
 
-  return (
-    <main className="min-h-screen bg-white text-slate-900">
+  const faq = isEnglish ? [
+    ['How long does the promo last?', 'Promo prices apply for your first two months. After that the regular price shown under each plan applies.'],
+    ['Which platforms are included?', 'Instagram, Facebook, YouTube, TikTok, and Google Analytics 4 for your website, on every plan.'],
+    ['Who can use the Analyst, Executive, and Viewer roles?', 'Team roles are part of the Agency plan. Starter and Business support Admin accounts only.'],
+  ] : [
+    ['Berapa lama harga promo berlaku?', 'Harga promo berlaku untuk dua bulan pertama. Setelah itu berlaku harga normal yang tertera di bawah setiap paket.'],
+    ['Platform apa saja yang termasuk?', 'Instagram, Facebook, YouTube, TikTok, dan Google Analytics 4 untuk website, di semua paket.'],
+    ['Siapa yang bisa memakai peran Analyst, Executive, dan Viewer?', 'Peran tim tersedia di paket Agency. Paket Starter dan Business hanya mendukung akun Admin.'],
+  ]
 
+  return (
+    <main className="min-h-screen bg-paper text-ink">
       <SiteHeader lang={language} basePath="/pricing" variant="full" />
 
-      {/* HERO */}
-      <section className="px-6 pb-10 pt-20">
-        <div className="mx-auto max-w-3xl text-center">
-
-          <div className="mb-5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-semibold tracking-wide text-slate-600">
-            {isEnglish
-              ? 'SIMPLE PRICING FOR GROWING BUSINESSES'
-              : 'HARGA SEDERHANA UNTUK BISNIS YANG BERKEMBANG'}
-          </div>
-
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-            {isEnglish ? (
-              <>Choose the right plan for your business.</>
-            ) : (
-              <>Pilih paket yang tepat untuk bisnis Anda.</>
-            )}
+      <section className="px-4 pb-14 pt-14 sm:px-6 lg:pt-20">
+        <div className="mx-auto max-w-6xl">
+          <h1 className="max-w-[18ch] text-[40px] font-extrabold leading-[1.05] tracking-tight sm:text-[52px]">
+            {isEnglish ? 'Pick the plan that fits how you report.' : 'Pilih paket yang sesuai cara Anda melapor.'}
           </h1>
-
-          <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-slate-500">
+          <p className="mt-5 max-w-[58ch] text-[17px] leading-relaxed text-ink-muted">
             {isEnglish
-              ? 'Manage, analyze, and understand your social media performance in one powerful dashboard.'
-              : 'Kelola, analisis, dan pahami performa media sosial Anda dalam satu dashboard.'}
+              ? 'Every plan includes all five channels, AI insights, and printable reports. Promo prices apply for your first two months.'
+              : 'Semua paket sudah mencakup lima kanal, insight AI, dan laporan siap cetak. Harga promo berlaku untuk dua bulan pertama.'}
           </p>
-
         </div>
       </section>
 
-      {/* PROMO */}
-      <section className="px-6 pb-14">
-        <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-slate-50 px-6 py-5 text-center">
-          <div className="text-sm font-semibold text-slate-900">
-            {isEnglish
-              ? 'Introductory pricing available for the first 2 months.'
-              : 'Harga promo berlaku selama 2 bulan untuk setiap akun.'}
-          </div>
-          <div className="mt-1 text-sm text-slate-500">
-            {isEnglish
-              ? 'After the promotional period, regular pricing will apply.'
-              : 'Setelah masa promo berakhir, harga normal akan berlaku.'}
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING CARDS */}
-      <section className="px-6 pb-20">
+      <section className="px-4 pb-20 sm:px-6">
         <PricingCards plans={currentPlans} language={language} />
       </section>
 
-      {/* NOTE */}
-      <section className="border-t border-slate-100 px-6 py-10">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm leading-6 text-slate-400">
-            {isEnglish
-              ? 'All plans include access to social media analytics and performance insights from one dashboard.'
-              : 'Semua paket dapat digunakan untuk mengelola dan menganalisis performa media sosial dari satu dashboard.'}
-          </p>
+      <section className="border-t border-ink/[0.07] bg-white px-4 py-16 sm:px-6">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1fr_2fr]">
+          <h2 className="text-[28px] font-extrabold leading-tight tracking-tight">{isEnglish ? 'Common questions' : 'Pertanyaan umum'}</h2>
+          <dl className="divide-y divide-ink/[0.08]">
+            {faq.map(([q, a]) => (
+              <div key={q} className="py-5 first:pt-0">
+                <dt className="text-[16px] font-bold">{q}</dt>
+                <dd className="mt-1.5 max-w-[68ch] text-[15px] leading-relaxed text-ink-muted">{a}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </section>
 
       <SiteFooter lang={language} />
-
     </main>
   )
 }

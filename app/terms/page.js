@@ -8,7 +8,7 @@ export default async function TermsPage({ searchParams }) {
   const isEnglish = language === 'en'
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
+    <main className="min-h-screen bg-paper text-ink">
 
       <SiteHeader lang={language} basePath="/terms" variant="full" />
 
@@ -18,28 +18,28 @@ export default async function TermsPage({ searchParams }) {
 
           <Link
             href={`/register?lang=${language}`}
-            className="text-sm text-blue-600 hover:text-blue-700"
+            className="text-sm text-signal hover:text-signal-deep"
           >
             ← {isEnglish ? 'Back to registration' : 'Kembali ke registrasi'}
           </Link>
 
-          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
             {isEnglish
               ? 'Terms & Conditions'
               : 'Syarat & Ketentuan'}
           </h1>
 
-          <p className="mt-3 text-sm text-slate-400">
+          <p className="mt-3 text-sm text-ink-muted">
             {isEnglish
               ? 'Last updated: August 15, 2026'
               : 'Terakhir diperbarui: 15 Agustus 2026'}
           </p>
 
-          <div className="mt-10 space-y-8 text-slate-600">
+          <div className="mt-10 space-y-8 text-ink-soft">
 
             {/* 1 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '1. Acceptance of Terms'
                   : '1. Penerimaan Ketentuan'}
@@ -54,7 +54,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 2 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '2. SocialPulse Service'
                   : '2. Layanan SocialPulse'}
@@ -69,7 +69,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 3 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '3. Account Registration'
                   : '3. Pendaftaran Akun'}
@@ -84,7 +84,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 4 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '4. Subscription Plans'
                   : '4. Paket Berlangganan'}
@@ -99,7 +99,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 5 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '5. Promotional Pricing'
                   : '5. Harga Promosi'}
@@ -114,7 +114,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 6 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '6. Social Media Connections'
                   : '6. Koneksi Media Sosial'}
@@ -129,7 +129,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 7 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '7. Prohibited Use'
                   : '7. Penggunaan yang Dilarang'}
@@ -144,7 +144,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 8 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '8. Service Availability'
                   : '8. Ketersediaan Layanan'}
@@ -159,7 +159,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 9 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '9. Changes to These Terms'
                   : '9. Perubahan Ketentuan'}
@@ -174,7 +174,7 @@ export default async function TermsPage({ searchParams }) {
 
             {/* 10 */}
             <section>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink">
                 {isEnglish
                   ? '10. Contact'
                   : '10. Kontak'}
