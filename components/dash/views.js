@@ -17,7 +17,7 @@ import {
 } from '@/lib/mockData'
 import {
   Card, ChartTooltip, KpiCard, ScoreBadge, SectionHeader, fmtShortDate, colorOf, labelOf, AIInsightsPanel,
-  apiFetch, getCurrentUser,
+  apiFetch, getCurrentUser, CHART,
 } from './shared'
 
 /* =========== OVERVIEW =========== */
@@ -29,60 +29,112 @@ export function OverviewView({ days }) {
   const websiteVisitors = perPlatformCurr.website?.reach || 0
   const websiteEngagement = perPlatformCurr.website?.engagement || 0
 
-  const kpis = [
-    { label:'Total Followers', value: totalsCurr.followers, prev: totalsPrev.followers, spark: mergedDaily.map(r=>r.followers) },
-    { label:'Follower Growth', value: totalsCurr.followerGrowth, prev: totalsPrev.followerGrowth, spark: mergedDaily.map(r=>r.engagement/50), prefix:'+' },
-    { label:'Total Reach', value: totalsCurr.reach, prev: totalsPrev.reach, spark: mergedDaily.map(r=>r.reach) },
-    { label:'Total Impressions', value: totalsCurr.impressions || Math.round(totalsCurr.reach*1.4), prev: totalsPrev.impressions || Math.round(totalsPrev.reach*1.4), spark: mergedDaily.map(r=>r.reach*1.4) },
-    { label:'Total Engagement', value: totalsCurr.engagement, prev: totalsPrev.engagement, spark: mergedDaily.map(r=>r.engagement) },
-    { label:'Engagement Rate', value: totalsCurr.engagementRate, prev: totalsPrev.engagementRate, spark: mergedDaily.map(r=>r.engagementRate), format:'pct' },
-    { label:'Total Video Views', value: totalsCurr.views, prev: totalsPrev.views, spark: mergedDaily.map(r=>r.views) },
-    { label:'Content Published', value: totalsCurr.contentPublished, prev: totalsPrev.contentPublished, spark: mergedDaily.map(r=>r.contentPublished) },
-    { label:'Website Visitors', value: websiteVisitors, prev: Math.round(websiteVisitors*0.92), spark: mergedDaily.map(r=>r.reach*0.15) },
-    { label:'Website Engagement', value: websiteEngagement, prev: Math.round(websiteEngagement*0.9), spark: mergedDaily.map(r=>r.engagement*0.15) },
+  const primary = [
+    { label:'Total followers', value: totalsCurr.followers, prev: totalsPrev.followers, spark: mergedDaily.map(r=>r.followers) },
+    { label:'Jangkauan (reach)', value: totalsCurr.reach, prev: totalsPrev.reach, spark: mergedDaily.map(r=>r.reach) },
+    { label:'Engagement', value: totalsCurr.engagement, prev: totalsPrev.engagement, spark: mergedDaily.map(r=>r.engagement) },
+    { label:'Engagement rate', value: totalsCurr.engagementRate, prev: totalsPrev.engagementRate, spark: mergedDaily.map(r=>r.engagementRate), format:'pct' },
   ]
-  const platformShare = Object.entries(perPlatformCurr).map(([k,v]) => ({ name: labelOf(k), value: v.engagement, color: colorOf(k) }))
+  const impressions = totalsCurr.impressions || Math.round(totalsCurr.reach*1.4)
+  const impressionsPrev = totalsPrev.impressions || Math.round(totalsPrev.reach*1.4)
+  const secondary = [
+    { label:'Follower baru', value: totalsCurr.followerGrowth, prev: totalsPrev.followerGrowth, prefix:'+' },
+    { label:'Impresi', value: impressions, prev: impressionsPrev },
+    { label:'Penayangan video', value: totalsCurr.views, prev: totalsPrev.views },
+    { label:'Konten terbit', value: totalsCurr.contentPublished, prev: totalsPrev.contentPublished },
+    { label:'Pengunjung website', value: websiteVisitors, prev: Math.round(websiteVisitors*0.92) },
+    { label:'Interaksi website', value: websiteEngagement, prev: Math.round(websiteEngagement*0.9) },
+  ]
+
+  const totalEng = Object.values(perPlatformCurr).reduce((a,v)=>a+(v.engagement||0),0)
+  const share = Object.entries(perPlatformCurr)
+    .map(([k,v]) => ({ key:k, name: labelOf(k), value: v.engagement, pct: totalEng ? Math.round(v.engagement/totalEng*100) : 0, color: colorOf(k), reach: v.reach, prevEng: perPlatformPrev[k]?.engagement || 0 }))
+    .sort((a,b)=>b.value-a.value)
+  const leader = share[0]
+  const engChange = pctChange(totalsCurr.engagement, totalsPrev.engagement)
+  const periodText = days === 1 ? 'Hari ini' : `Dalam ${days} hari terakhir`
+  const maxEng = Math.max(...share.map(x=>x.value), 1)
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {kpis.map(k => <KpiCard key={k.label} {...k} />)}
+      {/* Headline: satu kalimat yang merangkum periode */}
+      <section className="bg-white rounded-2xl border border-ink/[0.08] p-6 lg:p-8">
+        <p className="text-[26px] sm:text-[32px] lg:text-[38px] font-extrabold text-ink leading-[1.12] tracking-tight max-w-[22ch] tabular">
+          {periodText}, konten Anda menjangkau {formatNumber(totalsCurr.reach)} orang.
+        </p>
+        <p className="mt-3 text-[15px] text-ink-muted max-w-[62ch] leading-relaxed">
+          Engagement {engChange >= 0 ? 'naik' : 'turun'} <span className={`font-semibold tabular ${engChange >= 0 ? 'text-growth' : 'text-alert'}`}>{Math.abs(engChange)}%</span> dibanding periode sebelumnya
+          {leader ? <>, dan <span className="font-semibold text-ink">{leader.name}</span> menyumbang {leader.pct}% dari seluruh interaksi.</> : '.'}
+        </p>
+
+        <div className="mt-7">
+          <div className="text-[12.5px] text-ink-muted mb-2">Asal engagement per kanal</div>
+          <div className="flex h-3.5 rounded-full overflow-hidden bg-paper" role="img" aria-label={share.map(x=>`${x.name} ${x.pct}%`).join(', ')}>
+            {share.map(x => <div key={x.key} style={{ width:`${x.pct}%`, background:x.color }} title={`${x.name}: ${x.pct}%`} />)}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+            {share.map(x => (
+              <div key={x.key} className="flex items-center gap-1.5 text-[13px]">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background:x.color }} />
+                <span className="text-ink-soft">{x.name}</span>
+                <span className="font-semibold text-ink tabular">{x.pct}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {primary.map(k => <KpiCard key={k.label} size="lg" {...k} />)}
       </div>
+
+      {/* Metrik pendukung dalam satu strip, bukan kartu terpisah */}
+      <div className="bg-white rounded-xl border border-ink/[0.08] grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 divide-x divide-y xl:divide-y-0 divide-ink/[0.06]">
+        {secondary.map(k => { const ch = pctChange(k.value, k.prev); return (
+          <div key={k.label} className="p-4">
+            <div className="text-[12.5px] text-ink-muted">{k.label}</div>
+            <div className="text-[20px] font-bold text-ink mt-1 tabular">{k.prefix || ''}{formatNumber(k.value)}</div>
+            <div className={`text-[12px] font-semibold tabular mt-0.5 ${ch >= 0 ? 'text-growth' : 'text-alert'}`}>{ch >= 0 ? '+' : ''}{ch}%</div>
+          </div>
+        )})}
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card title="Tren Reach & Engagement" desc="Agregat seluruh platform per hari" className="xl:col-span-2">
+        <Card title="Jangkauan dan engagement harian" desc="Gabungan semua kanal" className="xl:col-span-2"
+          right={<div className="flex items-center gap-4 text-[12.5px] text-ink-muted"><span className="inline-flex items-center gap-1.5"><span className="w-3 h-[3px] rounded-full" style={{ background: CHART.reach }} />Reach</span><span className="inline-flex items-center gap-1.5"><span className="w-3 h-[3px] rounded-full" style={{ background: CHART.engagement }} />Engagement</span></div>}>
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={mergedDaily} margin={{ top:10, right:10, left:0, bottom:0 }}>
+            <AreaChart data={mergedDaily} margin={{ top:10, right:6, left:-6, bottom:0 }}>
               <defs>
-                <linearGradient id="reachG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1D4ED8" stopOpacity={0.35} /><stop offset="100%" stopColor="#1D4ED8" stopOpacity={0} /></linearGradient>
-                <linearGradient id="engG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10B981" stopOpacity={0.35} /><stop offset="100%" stopColor="#10B981" stopOpacity={0} /></linearGradient>
+                <linearGradient id="reachG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={CHART.reach} stopOpacity={0.18} /><stop offset="100%" stopColor={CHART.reach} stopOpacity={0} /></linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} />
-              <YAxis tick={{ fontSize: 11, fill:'#64748B' }} tickFormatter={formatNumber} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" name="Reach" dataKey="reach" stroke="#1D4ED8" strokeWidth={2} fill="url(#reachG)" />
-              <Area type="monotone" name="Engagement" dataKey="engagement" stroke="#10B981" strokeWidth={2} fill="url(#engG)" />
+              <CartesianGrid stroke={CHART.grid} vertical={false} />
+              <XAxis dataKey="date" tick={CHART.axis} tickFormatter={fmtShortDate} minTickGap={24} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="l" tick={CHART.axis} tickFormatter={formatNumber} axisLine={false} tickLine={false} width={52} />
+              <YAxis yAxisId="r" orientation="right" tick={CHART.axis} tickFormatter={formatNumber} axisLine={false} tickLine={false} width={48} />
+              <Tooltip content={<ChartTooltip />} cursor={{ stroke: CHART.grid }} />
+              <Area yAxisId="l" type="monotone" name="Reach" dataKey="reach" stroke={CHART.reach} strokeWidth={2.2} fill="url(#reachG)" />
+              <Area yAxisId="r" type="monotone" name="Engagement" dataKey="engagement" stroke={CHART.engagement} strokeWidth={2.2} fill="transparent" />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Kontribusi Engagement per Platform" desc="Distribusi engagement pada periode ini">
-          <ResponsiveContainer width="100%" height={230}>
-            <PieChart>
-              <Pie data={platformShare} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                {platformShare.map((e, i) => <Cell key={i} fill={e.color} />)}
-              </Pie>
-              <Tooltip content={<ChartTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-1.5 mt-2">
-            {platformShare.map(p => {
-              const total = platformShare.reduce((a,x)=>a+x.value,0)
-              const pct = total>0 ? Math.round(p.value/total*100) : 0
-              return <div key={p.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:p.color }} /><span className="flex-1 text-slate-600">{p.name}</span><span className="font-medium text-slate-800">{pct}%</span></div>
-            })}
-          </div>
+
+        <Card title="Peringkat kanal" desc="Berdasarkan engagement periode ini">
+          <ol className="space-y-4">
+            {share.map((x, i) => { const ch = pctChange(x.value, x.prevEng); return (
+              <li key={x.key}>
+                <div className="flex items-baseline gap-2 text-[13.5px]">
+                  <span className="w-4 text-ink-muted tabular">{i+1}</span>
+                  <span className="font-semibold text-ink flex-1">{x.name}</span>
+                  <span className="font-bold text-ink tabular">{formatNumber(x.value)}</span>
+                  <span className={`w-12 text-right text-[12px] font-semibold tabular ${ch >= 0 ? 'text-growth' : 'text-alert'}`}>{ch >= 0 ? '+' : ''}{ch}%</span>
+                </div>
+                <div className="ml-6 mt-1.5 h-1.5 rounded-full bg-paper overflow-hidden"><div className="h-full rounded-full" style={{ width:`${x.value/maxEng*100}%`, background:x.color }} /></div>
+              </li>
+            )})}
+          </ol>
         </Card>
       </div>
+
       <AIInsightsPanel scope="overview" context={{ periode_hari: days, total: totalsCurr, sebelumnya: totalsPrev, per_platform: perPlatformCurr }} fallback={insights} />
     </div>
   )
@@ -124,21 +176,21 @@ export function SocialMediaView({ days }) {
       <Card title="Perbandingan Platform" desc="Ringkasan performa seluruh kanal" className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+            <thead className="bg-paper text-[11px] text-ink-muted">
               <tr>{['Platform','Followers','Growth','Reach','Impressions','Views','Likes','Comments','Shares','Saves','Eng. Rate','Konten'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {platforms.map(p => { const v = perPlatformCurr[p.key]; return (
-                <tr key={p.key} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="px-4 py-3.5"><div className="flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background:p.color }} /><div><div className="font-medium text-slate-900">{p.name}</div><div className="text-[11px] text-slate-500">{p.handle}</div></div></div></td>
-                  <td className="px-4 py-3.5 font-medium text-slate-800">{formatNumber(v.followers)}</td>
+                <tr key={p.key} className="border-t border-ink/[0.06] hover:bg-paper">
+                  <td className="px-4 py-3.5"><div className="flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background:p.color }} /><div><div className="font-medium text-ink">{p.name}</div><div className="text-[11px] text-ink-muted">{p.handle}</div></div></div></td>
+                  <td className="px-4 py-3.5 font-medium text-ink">{formatNumber(v.followers)}</td>
                   <td className="px-4 py-3.5"><div className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="w-3.5 h-3.5" />+{formatNumber(v.followerGrowth)}</div></td>
-                  <td className="px-4 py-3.5 text-slate-700">{formatNumber(v.reach)}</td><td className="px-4 py-3.5 text-slate-700">{formatNumber(v.impressions)}</td>
-                  <td className="px-4 py-3.5 text-slate-700">{formatNumber(v.views)}</td><td className="px-4 py-3.5 text-slate-700">{formatNumber(v.likes)}</td>
-                  <td className="px-4 py-3.5 text-slate-700">{formatNumber(v.comments)}</td><td className="px-4 py-3.5 text-slate-700">{formatNumber(v.shares)}</td>
-                  <td className="px-4 py-3.5 text-slate-700">{formatNumber(v.saves)}</td>
-                  <td className="px-4 py-3.5"><span className="inline-flex px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold">{v.engagementRate}%</span></td>
-                  <td className="px-4 py-3.5 text-slate-700">{v.contentPublished}</td>
+                  <td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.reach)}</td><td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.impressions)}</td>
+                  <td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.views)}</td><td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.likes)}</td>
+                  <td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.comments)}</td><td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.shares)}</td>
+                  <td className="px-4 py-3.5 text-ink-soft">{formatNumber(v.saves)}</td>
+                  <td className="px-4 py-3.5"><span className="inline-flex px-2 py-0.5 rounded-md bg-signal-soft text-signal text-xs font-semibold">{v.engagementRate}%</span></td>
+                  <td className="px-4 py-3.5 text-ink-soft">{v.contentPublished}</td>
                 </tr>) })}
             </tbody>
           </table>
@@ -148,9 +200,9 @@ export function SocialMediaView({ days }) {
         <Card title="Follower Growth Antar Platform" desc="Perkembangan jumlah pengikut harian">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={growthData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={22} />
-              <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} />
+              <CartesianGrid stroke="#E6EAF2" vertical={false} />
+              <XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={22} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} />
               {platforms.filter(p=>p.key!=='website').map(p => <Line key={p.key} type="monotone" dataKey={p.key} name={p.name} stroke={p.color} strokeWidth={2} dot={false} />)}
             </LineChart>
           </ResponsiveContainer>
@@ -158,10 +210,10 @@ export function SocialMediaView({ days }) {
         <Card title="Reach vs Engagement" desc="Perbandingan volume total per platform">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={bars}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize:12, fill:'#64748B' }} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} />
+              <CartesianGrid stroke="#E6EAF2" vertical={false} />
+              <XAxis axisLine={false} tickLine={false} dataKey="name" tick={{ fontSize:12, fill:'#5B6785' }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} />
               <Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} />
-              <Bar dataKey="reach" name="Reach" fill="#1D4ED8" radius={[6,6,0,0]} /><Bar dataKey="engagement" name="Engagement" fill="#10B981" radius={[6,6,0,0]} />
+              <Bar dataKey="reach" name="Reach" fill="#2350E6" radius={[6,6,0,0]} /><Bar dataKey="engagement" name="Engagement" fill="#0E9F8E" radius={[6,6,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -319,12 +371,12 @@ export function PlatformDetailView({ platformKey, days }) {
     : curr
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: platform.color+'18', color: platform.color }}><Icon className="w-7 h-7" /></div>
         <div className="flex-1">
-          <div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Akun {platform.name}</div>
-          <div className="text-lg font-bold text-slate-900">{live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || platform.handle}</div>
-          {live && <div className="text-xs text-slate-500 mt-0.5">
+          <div className="text-[11px] text-ink-muted/70 font-semibold">Akun {platform.name}</div>
+          <div className="text-lg font-bold text-ink">{live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || platform.handle}</div>
+          {live && <div className="text-xs text-ink-muted mt-0.5">
             {platformKey==='instagram' && live.summary && `${formatNumber(live.account?.followers_count||live.summary.followers||0)} followers · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.impressions||0)} impressions${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
             {platformKey==='facebook' && live.summary && `${formatNumber(live.summary.fansEnd||live.summary.followers||0)} fans · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.engagement||0)} engagement${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
             {platformKey==='youtube' && live.summary && `${formatNumber(live.summary.subscribers||live.summary.followers||0)} subscribers · ${formatNumber(live.summary.totalViews||live.summary.views||0)} views${liveSource==='oauth'?'':' (live · Ayrshare)'}`}
@@ -343,28 +395,28 @@ export function PlatformDetailView({ platformKey, days }) {
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={chartData}>
               <defs><linearGradient id={`re-${platformKey}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={platform.color} stopOpacity={0.35} /><stop offset="100%" stopColor={platform.color} stopOpacity={0} /></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} />
+              <CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} />
               <Area type="monotone" name="Reach" dataKey="reach" stroke={platform.color} strokeWidth={2} fill={`url(#re-${platformKey})`} />
-              <Line type="monotone" name="Engagement" dataKey="engagement" stroke="#10B981" strokeWidth={2} dot={false} />
+              <Line type="monotone" name="Engagement" dataKey="engagement" stroke="#0E9F8E" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
         <Card title="Follower Growth" desc={dailyLive ? "Estimasi (Ayrshare tidak mengembalikan history follower harian)" : "Perkembangan pengikut"}>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>
+            <LineChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>
           </ResponsiveContainer>
         </Card>
         <Card title={dailyLive ? "Posting Frequency (Live · Ayrshare)" : "Posting Frequency"} desc={dailyLive ? "Jumlah post nyata via Ayrshare" : "Jumlah konten per hari"}>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
+            <BarChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
           </ResponsiveContainer>
         </Card>
         <Card title="Top Performing Content" desc="5 konten dengan skor tertinggi">
           <div className="space-y-2.5">
             {top.map((c,i) => { const cat = scoreCategory(c.score); return (
-              <div key={c.id} className="flex items-center gap-3 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50">
-                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">#{i+1}</div>
-                <div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-800 truncate">{c.title}</div><div className="text-[11px] text-slate-500">{c.type} · {c.topic} · {formatNumber(c.reach)} reach · {c.engagementRate}%</div></div>
+              <div key={c.id} className="flex items-center gap-3 rounded-lg border border-ink/[0.06] p-2.5 hover:bg-paper">
+                <div className="w-8 h-8 rounded-lg bg-ink/[0.05] flex items-center justify-center text-ink-muted text-xs font-bold">#{i+1}</div>
+                <div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{c.title}</div><div className="text-[11px] text-ink-muted">{c.type} · {c.topic} · {formatNumber(c.reach)} reach · {c.engagementRate}%</div></div>
                 <ScoreBadge score={c.score} category={cat} />
               </div>) })}
           </div>
@@ -374,9 +426,9 @@ export function PlatformDetailView({ platformKey, days }) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {worst.map(c => { const cat = scoreCategory(c.score); return (
                 <div key={c.id} className="rounded-xl border border-red-100 bg-red-50/40 p-3">
-                  <div className="text-xs text-slate-500">{c.type} · {c.topic}</div>
-                  <div className="text-sm font-medium text-slate-800 mt-1">{c.title}</div>
-                  <div className="text-xs text-slate-500 mt-2">Reach {formatNumber(c.reach)} · Views {formatNumber(c.views)}</div>
+                  <div className="text-xs text-ink-muted">{c.type} · {c.topic}</div>
+                  <div className="text-sm font-medium text-ink mt-1">{c.title}</div>
+                  <div className="text-xs text-ink-muted mt-2">Reach {formatNumber(c.reach)} · Views {formatNumber(c.views)}</div>
                   <div className="mt-2"><ScoreBadge score={c.score} category={cat} /></div>
                 </div>) })}
             </div>
@@ -403,26 +455,26 @@ export function WebsiteView({ days }) {
   const insights = { findings:[`Total pengunjung ${formatNumber(w.totals.users)} pada periode ini.`,`Halaman paling dikunjungi: ${w.topPages[0].title} (${formatNumber(w.topPages[0].views)} views).`], opportunities:['Sumber sosial menyumbang 24% traffic — kolaborasi cross-posting dari Instagram/TikTok dapat digandakan.'], risks:[w.totals.bounce>50?`Bounce rate ${w.totals.bounce}% relatif tinggi — audit CTA landing page.`:'Bounce rate dalam batas wajar.'], actions:['Optimasi SEO halaman pendaftaran (15% traffic).','Buat landing page khusus per campaign.'], ideas:['Artikel SEO: "Cara Memilih Kursus Bersertifikasi BNSP".'] }
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-sky-50 text-sky-600"><Globe className="w-7 h-7" /></div>
-        <div><div className="text-[11px] uppercase tracking-widest text-slate-400 font-semibold">Website</div><div className="text-lg font-bold text-slate-900">{findPlatform('website').handle}</div></div>
+        <div><div className="text-[11px] text-ink-muted/70 font-semibold">Website</div><div className="text-lg font-bold text-ink">{findPlatform('website').handle}</div></div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Card title="Traffic Trend" desc="Pengunjung harian" className="xl:col-span-2">
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={w.trend}><defs><linearGradient id="wtG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.35} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Users" dataKey="users" stroke="#0EA5E9" strokeWidth={2} fill="url(#wtG)" /><Line type="monotone" name="Sessions" dataKey="sessions" stroke="#1D4ED8" strokeWidth={2} dot={false} /></AreaChart>
+            <AreaChart data={w.trend}><defs><linearGradient id="wtG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.35} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Users" dataKey="users" stroke="#0EA5E9" strokeWidth={2} fill="url(#wtG)" /><Line type="monotone" name="Sessions" dataKey="sessions" stroke="#2350E6" strokeWidth={2} dot={false} /></AreaChart>
           </ResponsiveContainer>
         </Card>
         <Card title="Traffic Sources" desc="Distribusi sumber pengunjung">
-          <ResponsiveContainer width="100%" height={230}><PieChart><Pie data={w.sources} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>{w.sources.map((e,i)=><Cell key={i} fill={['#1D4ED8','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444'][i%6]} />)}</Pie><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /></PieChart></ResponsiveContainer>
-          <div className="space-y-1.5 mt-2">{w.sources.map((p,i)=><div key={p.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:['#1D4ED8','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444'][i%6] }} /><span className="flex-1 text-slate-600">{p.name}</span><span className="font-medium text-slate-800">{p.value}%</span></div>)}</div>
+          <ResponsiveContainer width="100%" height={230}><PieChart><Pie data={w.sources} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>{w.sources.map((e,i)=><Cell key={i} fill={['#2350E6','#0EA5E9','#0E9F8E','#F59E0B','#8B5CF6','#EF4444'][i%6]} />)}</Pie><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /></PieChart></ResponsiveContainer>
+          <div className="space-y-1.5 mt-2">{w.sources.map((p,i)=><div key={p.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:['#2350E6','#0EA5E9','#0E9F8E','#F59E0B','#8B5CF6','#EF4444'][i%6] }} /><span className="flex-1 text-ink-soft">{p.name}</span><span className="font-medium text-ink">{p.value}%</span></div>)}</div>
         </Card>
         <Card title="Top Pages" desc="Halaman paling dikunjungi" className="xl:col-span-2">
-          <div className="space-y-1.5">{w.topPages.map((p,i)=>(<div key={p.path} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50"><div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">#{i+1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-800 truncate">{p.title}</div><div className="text-[11px] text-slate-500 font-mono">{p.path}</div></div><div className="text-sm font-semibold text-slate-800">{formatNumber(p.views)}</div></div>))}</div>
+          <div className="space-y-1.5">{w.topPages.map((p,i)=>(<div key={p.path} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-paper"><div className="w-8 h-8 rounded-lg bg-ink/[0.05] flex items-center justify-center text-ink-muted text-xs font-bold">#{i+1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{p.title}</div><div className="text-[11px] text-ink-muted font-mono">{p.path}</div></div><div className="text-sm font-semibold text-ink">{formatNumber(p.views)}</div></div>))}</div>
         </Card>
         <Card title="Social Referral" desc="Traffic dari sosial media">
-          <ResponsiveContainer width="100%" height={230}><BarChart data={w.socialRef} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" horizontal={false} /><XAxis type="number" tick={{ fontSize:11, fill:'#64748B' }} /><YAxis dataKey="name" type="category" tick={{ fontSize:12, fill:'#64748B' }} width={80} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Share (%)" fill="#0EA5E9" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={230}><BarChart data={w.socialRef} layout="vertical"><CartesianGrid stroke="#E6EAF2" horizontal={false} /><XAxis axisLine={false} tickLine={false} type="number" tick={{ fontSize:11, fill:'#5B6785' }} /><YAxis axisLine={false} tickLine={false} dataKey="name" type="category" tick={{ fontSize:12, fill:'#5B6785' }} width={80} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Share (%)" fill="#0EA5E9" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer>
         </Card>
       </div>
       <AIInsightsPanel scope="website" context={{ periode_hari: days, totals: w.totals, top_pages: w.topPages.slice(0,5), sources: w.sources, social_referral: w.socialRef }} fallback={insights} />
@@ -443,19 +495,19 @@ export function ContentView({ days }) {
     <div className="space-y-6">
       <Card>
         <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari judul konten..." className="pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
+          <div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted/70" /><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari judul konten..." className="pl-9 pr-3 py-2 rounded-lg border border-ink/10 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
           <Select label="Platform" value={plat} onChange={setPlat} options={[{v:'all',l:'Semua Platform'},...getPlatforms().filter(p=>p.key!=='website').map(p=>({v:p.key,l:p.name}))]} />
           <Select label="Tipe" value={type} onChange={setType} options={[{v:'all',l:'Semua Tipe'},...uniqueTypes.map(t=>({v:t,l:t}))]} />
           <Select label="Topik" value={topic} onChange={setTopic} options={[{v:'all',l:'Semua Topik'},...uniqueTopics.map(t=>({v:t,l:t}))]} />
-          <div className="ml-auto text-xs text-slate-500">{filtered.length} konten</div>
+          <div className="ml-auto text-xs text-ink-muted">{filtered.length} konten</div>
         </div>
       </Card>
       <Card title="Daftar Konten" desc="Semua konten pada periode ini" className="!p-0 overflow-hidden">
         <div className="overflow-x-auto max-h-[520px]">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider sticky top-0"><tr>{['Tanggal','Platform','Judul','Tipe','Topik','Reach','Views','Eng.','Eng.Rate','Skor'].map(h=><th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
+            <thead className="bg-paper text-[11px] text-ink-muted sticky top-0"><tr>{['Tanggal','Platform','Judul','Tipe','Topik','Reach','Views','Eng.','Eng.Rate','Skor'].map(h=><th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr></thead>
             <tbody>{filtered.slice(0,80).map(c=>{ const cat = scoreCategory(c.score); return (
-              <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50/60"><td className="px-4 py-2.5 text-slate-600 text-xs">{c.date}</td><td className="px-4 py-2.5"><span className="inline-flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full" style={{ background:c.platformColor }} />{c.platformName}</span></td><td className="px-4 py-2.5 max-w-md"><div className="text-slate-800 font-medium truncate">{c.title}</div>{c.campaign&&<div className="text-[10px] text-blue-600 mt-0.5">📢 {c.campaign}</div>}</td><td className="px-4 py-2.5"><span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">{c.type}</span></td><td className="px-4 py-2.5 text-xs text-slate-600">{c.topic}</td><td className="px-4 py-2.5 text-slate-700">{formatNumber(c.reach)}</td><td className="px-4 py-2.5 text-slate-700">{formatNumber(c.views)}</td><td className="px-4 py-2.5 text-slate-700">{formatNumber(c.engagement)}</td><td className="px-4 py-2.5 text-slate-700">{c.engagementRate}%</td><td className="px-4 py-2.5"><ScoreBadge score={c.score} category={cat} /></td></tr>)})}</tbody>
+              <tr key={c.id} className="border-t border-ink/[0.06] hover:bg-paper"><td className="px-4 py-2.5 text-ink-soft text-xs">{c.date}</td><td className="px-4 py-2.5"><span className="inline-flex items-center gap-1.5 text-xs"><span className="w-2 h-2 rounded-full" style={{ background:c.platformColor }} />{c.platformName}</span></td><td className="px-4 py-2.5 max-w-md"><div className="text-ink font-medium truncate">{c.title}</div>{c.campaign&&<div className="text-[10px] text-signal mt-0.5">📢 {c.campaign}</div>}</td><td className="px-4 py-2.5"><span className="text-xs px-2 py-0.5 rounded-md bg-ink/[0.05] text-ink-soft">{c.type}</span></td><td className="px-4 py-2.5 text-xs text-ink-soft">{c.topic}</td><td className="px-4 py-2.5 text-ink-soft">{formatNumber(c.reach)}</td><td className="px-4 py-2.5 text-ink-soft">{formatNumber(c.views)}</td><td className="px-4 py-2.5 text-ink-soft">{formatNumber(c.engagement)}</td><td className="px-4 py-2.5 text-ink-soft">{c.engagementRate}%</td><td className="px-4 py-2.5"><ScoreBadge score={c.score} category={cat} /></td></tr>)})}</tbody>
           </table>
         </div>
       </Card>
@@ -468,27 +520,27 @@ export function ContentView({ days }) {
 }
 
 function Select({ label, value, onChange, options }) {
-  return <select value={value} onChange={e=>onChange(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200" aria-label={label}>{options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}</select>
+  return <select value={value} onChange={e=>onChange(e.target.value)} className="px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200" aria-label={label}>{options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}</select>
 }
 
 function ContentList({ title, items }) {
-  return <Card title={title}><div className="space-y-2">{items.map((c,i)=>{ const cat = scoreCategory(c.score); return (<div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-100 hover:bg-slate-50"><div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">#{i+1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-800 truncate">{c.title}</div><div className="text-[11px] text-slate-500">{c.platformName} · {c.type} · {formatNumber(c.reach)} reach · {c.engagementRate}%</div></div><ScoreBadge score={c.score} category={cat} /></div>)})}</div></Card>
+  return <Card title={title}><div className="space-y-2">{items.map((c,i)=>{ const cat = scoreCategory(c.score); return (<div key={c.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-ink/[0.06] hover:bg-paper"><div className="w-8 h-8 rounded-lg bg-ink/[0.05] flex items-center justify-center text-ink-muted text-xs font-bold">#{i+1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{c.title}</div><div className="text-[11px] text-ink-muted">{c.platformName} · {c.type} · {formatNumber(c.reach)} reach · {c.engagementRate}%</div></div><ScoreBadge score={c.score} category={cat} /></div>)})}</div></Card>
 }
 
 /* =========== AUDIENCE =========== */
 export function AudienceView() {
   const a = generateAudience()
-  const COLORS = ['#1D4ED8','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#EC4899','#14B8A6','#64748B']
+  const COLORS = ['#2350E6','#0EA5E9','#0E9F8E','#F59E0B','#8B5CF6','#EF4444','#EC4899','#14B8A6','#64748B']
   const insights = { findings:['Audiens dominan pada rentang 18-34 tahun (72%) — target Gen Z & Milenial.','Perempuan mendominasi 57% audiens.','DKI Jakarta & Jawa Barat menyumbang 40% audiens.'], opportunities:['Konten karier & sertifikasi profesi cocok untuk kelompok 25-34.','Wilayah timur Indonesia berpotensi ditingkatkan dengan konten geo-lokal.'], risks:['Segmen 45+ hanya 7% — perlu adaptasi format bagi pemangku kepentingan senior.'], actions:['Jadwal posting utama pada 19.00-21.00 WIB (peak activity).','Kembangkan konten multi-bahasa daerah untuk perluas jangkauan.'], ideas:['Series "Alumni Inspiratif" per provinsi.','Konten profesi berbasis Peta Jalan Karier 25-34 tahun.'] }
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <Card title="Distribusi Usia" desc="Persentase audiens per rentang usia"><ResponsiveContainer width="100%" height={220}><BarChart data={a.age}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="name" tick={{ fontSize:11, fill:'#64748B' }} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={v=>v+'%'} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Audiens" fill="#1D4ED8" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></Card>
-        <Card title="Distribusi Gender" desc="Persentase berdasarkan gender"><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={a.gender} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80}>{a.gender.map((_,i)=><Cell key={i} fill={COLORS[i]} />)}</Pie><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /></PieChart></ResponsiveContainer><div className="space-y-1 mt-2">{a.gender.map((g,i)=><div key={g.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:COLORS[i] }} /><span className="flex-1 text-slate-600">{g.name}</span><span className="font-medium text-slate-800">{g.value}%</span></div>)}</div></Card>
-        <Card title="Lokasi Teratas" desc="Distribusi geografis"><ResponsiveContainer width="100%" height={220}><BarChart data={a.location} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" horizontal={false} /><XAxis type="number" tick={{ fontSize:10, fill:'#64748B' }} tickFormatter={v=>v+'%'} /><YAxis dataKey="name" type="category" tick={{ fontSize:10, fill:'#64748B' }} width={100} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Audiens" fill="#0EA5E9" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer></Card>
-        <Card title="Jam Aktif Audiens" desc="Rata-rata aktivitas per jam (WIB)"><ResponsiveContainer width="100%" height={220}><AreaChart data={a.activeHours}><defs><linearGradient id="ah" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10B981" stopOpacity={0.4} /><stop offset="100%" stopColor="#10B981" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="hour" tick={{ fontSize:9, fill:'#64748B' }} interval={2} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Aktivitas" dataKey="value" stroke="#10B981" strokeWidth={2} fill="url(#ah)" /></AreaChart></ResponsiveContainer></Card>
+        <Card title="Distribusi Usia" desc="Persentase audiens per rentang usia"><ResponsiveContainer width="100%" height={220}><BarChart data={a.age}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="name" tick={{ fontSize:11, fill:'#5B6785' }} /><YAxis tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={v=>v+'%'} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Audiens" fill="#2350E6" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></Card>
+        <Card title="Distribusi Gender" desc="Persentase berdasarkan gender"><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={a.gender} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80}>{a.gender.map((_,i)=><Cell key={i} fill={COLORS[i]} />)}</Pie><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /></PieChart></ResponsiveContainer><div className="space-y-1 mt-2">{a.gender.map((g,i)=><div key={g.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:COLORS[i] }} /><span className="flex-1 text-ink-soft">{g.name}</span><span className="font-medium text-ink">{g.value}%</span></div>)}</div></Card>
+        <Card title="Lokasi Teratas" desc="Distribusi geografis"><ResponsiveContainer width="100%" height={220}><BarChart data={a.location} layout="vertical"><CartesianGrid stroke="#E6EAF2" horizontal={false} /><XAxis type="number" tick={{ fontSize:10, fill:'#5B6785' }} tickFormatter={v=>v+'%'} /><YAxis axisLine={false} tickLine={false} dataKey="name" type="category" tick={{ fontSize:10, fill:'#5B6785' }} width={100} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Audiens" fill="#0EA5E9" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer></Card>
+        <Card title="Jam Aktif Audiens" desc="Rata-rata aktivitas per jam (WIB)"><ResponsiveContainer width="100%" height={220}><AreaChart data={a.activeHours}><defs><linearGradient id="ah" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0E9F8E" stopOpacity={0.4} /><stop offset="100%" stopColor="#0E9F8E" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="hour" tick={{ fontSize:9, fill:'#5B6785' }} interval={2} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Aktivitas" dataKey="value" stroke="#0E9F8E" strokeWidth={2} fill="url(#ah)" /></AreaChart></ResponsiveContainer></Card>
       </div>
-      <Card title="Minat Audiens" desc="Topik yang paling relevan"><div className="flex flex-wrap gap-2">{a.interests.map(i=><span key={i} className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">{i}</span>)}</div></Card>
+      <Card title="Minat Audiens" desc="Topik yang paling relevan"><div className="flex flex-wrap gap-2">{a.interests.map(i=><span key={i} className="px-3 py-1.5 rounded-full bg-signal-soft text-signal text-sm font-medium">{i}</span>)}</div></Card>
       <AIInsightsPanel scope="audience" context={a} fallback={insights} />
     </div>
   )
@@ -497,7 +549,7 @@ export function AudienceView() {
 /* =========== SENTIMENT =========== */
 export function SentimentView({ days }) {
   const s = useMemo(() => generateSentiment(Math.min(days,60)), [days])
-  const COLORS = { positive:'#10B981', neutral:'#64748B', negative:'#EF4444' }
+  const COLORS = { positive:'#0E9F8E', neutral:'#64748B', negative:'#EF4444' }
   const insights = { findings:[`Total ${formatNumber(s.total)} komentar dianalisis. Sentimen positif dominan ${s.positivePct}%.`,`Sentimen negatif ${s.negativePct}% — terutama seputar pendaftaran dan verifikasi.`], opportunities:['Sentimen positif tinggi pada kisah alumni — konten testimonial layak diperbanyak.'], risks:[`Sentimen negatif ${s.negativePct}% berpusat pada "Layanan Pengaduan" dan "Pendaftaran" — perlu SOP respons.`], actions:['Buat FAQ pendaftaran yang lebih jelas dan cepat.','Percepat verifikasi peserta dan komunikasikan status secara berkala.'], ideas:['Konten "Behind the Scene: Tim Layanan Peserta" untuk humanisasi.'] }
   return (
     <div className="space-y-6">
@@ -508,11 +560,11 @@ export function SentimentView({ days }) {
         <KpiCard label="Negative" value={s.negativePct} prev={s.negativePct-0.8} format="pct" />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card title="Sentiment Trend" desc="Perkembangan harian" className="xl:col-span-2"><ResponsiveContainer width="100%" height={280}><AreaChart data={s.trend}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} /><Area type="monotone" name="Positive" dataKey="positive" stackId="1" stroke={COLORS.positive} fill={COLORS.positive} fillOpacity={0.7} /><Area type="monotone" name="Neutral" dataKey="neutral" stackId="1" stroke={COLORS.neutral} fill={COLORS.neutral} fillOpacity={0.6} /><Area type="monotone" name="Negative" dataKey="negative" stackId="1" stroke={COLORS.negative} fill={COLORS.negative} fillOpacity={0.7} /></AreaChart></ResponsiveContainer></Card>
-        <Card title="Topik Yang Sering Muncul" desc="Frekuensi topik dalam komentar"><div className="space-y-2">{s.topics.map((t,i)=>(<div key={t.name} className="flex items-center gap-3"><div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-blue-700 text-[11px] font-bold">{i+1}</div><div className="flex-1"><div className="flex items-center justify-between mb-1"><span className="text-xs text-slate-700">{t.name}</span><span className="text-xs font-semibold text-slate-800">{t.count}</span></div><div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: (t.count/s.topics[0].count*100)+'%' }} /></div></div></div>))}</div></Card>
-        <Card title="💚 Most Positive Comments"><div className="space-y-2">{s.samples.positive.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-slate-700">“{c}”</div>)}</div></Card>
-        <Card title="⚠️ Potential Issues"><div className="space-y-2">{s.samples.negative.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-red-50/60 border border-red-100 text-xs text-slate-700">“{c}”</div>)}</div></Card>
-        <Card title="💬 Pertanyaan Publik"><div className="space-y-2">{s.samples.neutral.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs text-slate-700">“{c}”</div>)}</div></Card>
+        <Card title="Sentiment Trend" desc="Perkembangan harian" className="xl:col-span-2"><ResponsiveContainer width="100%" height={280}><AreaChart data={s.trend}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} /><Area type="monotone" name="Positive" dataKey="positive" stackId="1" stroke={COLORS.positive} fill={COLORS.positive} fillOpacity={0.7} /><Area type="monotone" name="Neutral" dataKey="neutral" stackId="1" stroke={COLORS.neutral} fill={COLORS.neutral} fillOpacity={0.6} /><Area type="monotone" name="Negative" dataKey="negative" stackId="1" stroke={COLORS.negative} fill={COLORS.negative} fillOpacity={0.7} /></AreaChart></ResponsiveContainer></Card>
+        <Card title="Topik Yang Sering Muncul" desc="Frekuensi topik dalam komentar"><div className="space-y-2">{s.topics.map((t,i)=>(<div key={t.name} className="flex items-center gap-3"><div className="w-6 h-6 rounded-md bg-signal-soft flex items-center justify-center text-signal text-[11px] font-bold">{i+1}</div><div className="flex-1"><div className="flex items-center justify-between mb-1"><span className="text-xs text-ink-soft">{t.name}</span><span className="text-xs font-semibold text-ink">{t.count}</span></div><div className="h-1.5 bg-ink/[0.05] rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: (t.count/s.topics[0].count*100)+'%' }} /></div></div></div>))}</div></Card>
+        <Card title="💚 Most Positive Comments"><div className="space-y-2">{s.samples.positive.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs text-ink-soft">“{c}”</div>)}</div></Card>
+        <Card title="⚠️ Potential Issues"><div className="space-y-2">{s.samples.negative.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-red-50/60 border border-red-100 text-xs text-ink-soft">“{c}”</div>)}</div></Card>
+        <Card title="💬 Pertanyaan Publik"><div className="space-y-2">{s.samples.neutral.slice(0,5).map((c,i)=><div key={i} className="p-2.5 rounded-lg bg-paper border border-ink/[0.06] text-xs text-ink-soft">“{c}”</div>)}</div></Card>
       </div>
       <AIInsightsPanel scope="sentiment" context={s} fallback={insights} />
     </div>
@@ -534,8 +586,8 @@ export function EngagementView({ days }) {
         <KpiCard label="Comments" value={Object.values(perPlatformCurr).reduce((a,v)=>a+v.comments,0)} prev={0} />
         <KpiCard label="Shares + Saves" value={Object.values(perPlatformCurr).reduce((a,v)=>a+v.shares+v.saves,0)} prev={0} />
       </div>
-      <Card title="Komposisi Engagement per Platform" desc="Kontribusi likes/comments/shares/saves"><ResponsiveContainer width="100%" height={320}><BarChart data={composition}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="name" tick={{ fontSize:12, fill:'#64748B' }} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} /><Bar dataKey="likes" stackId="a" name="Likes" fill="#1D4ED8" /><Bar dataKey="comments" stackId="a" name="Comments" fill="#0EA5E9" /><Bar dataKey="shares" stackId="a" name="Shares" fill="#10B981" /><Bar dataKey="saves" stackId="a" name="Saves" fill="#F59E0B" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></Card>
-      <Card title="Engagement Rate Harian" desc="Agregat seluruh platform"><ResponsiveContainer width="100%" height={260}><LineChart data={mergedDaily.map(r=>({ ...r, engagementRate: r.reach>0 ? +(r.engagement/r.reach*100).toFixed(2) : 0 }))}><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} /><XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={v=>v+'%'} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Line type="monotone" name="Engagement Rate" dataKey="engagementRate" stroke="#10B981" strokeWidth={2.5} dot={false} /></LineChart></ResponsiveContainer></Card>
+      <Card title="Komposisi Engagement per Platform" desc="Kontribusi likes/comments/shares/saves"><ResponsiveContainer width="100%" height={320}><BarChart data={composition}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="name" tick={{ fontSize:12, fill:'#5B6785' }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Legend wrapperStyle={{ fontSize:12 }} /><Bar dataKey="likes" stackId="a" name="Likes" fill="#2350E6" /><Bar dataKey="comments" stackId="a" name="Comments" fill="#0EA5E9" /><Bar dataKey="shares" stackId="a" name="Shares" fill="#0E9F8E" /><Bar dataKey="saves" stackId="a" name="Saves" fill="#F59E0B" radius={[6,6,0,0]} /></BarChart></ResponsiveContainer></Card>
+      <Card title="Engagement Rate Harian" desc="Agregat seluruh platform"><ResponsiveContainer width="100%" height={260}><LineChart data={mergedDaily.map(r=>({ ...r, engagementRate: r.reach>0 ? +(r.engagement/r.reach*100).toFixed(2) : 0 }))}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={v=>v+'%'} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Line type="monotone" name="Engagement Rate" dataKey="engagementRate" stroke="#0E9F8E" strokeWidth={2.5} dot={false} /></LineChart></ResponsiveContainer></Card>
     </div>
   )
 }
@@ -552,8 +604,8 @@ export function CampaignView() {
         <Card title="🏆 Best Campaign" className="border-emerald-200 bg-emerald-50/40"><CampaignSummary c={best} tone="emerald" /></Card>
         <Card title="⚠️ Needs Attention" className="border-amber-200 bg-amber-50/40"><CampaignSummary c={worst} tone="amber" /></Card>
       </div>
-      <Card title="Daftar Campaign" desc="Perbandingan seluruh campaign" className="!p-0 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider"><tr>{['Campaign','Objective','Target','Platforms','Konten','Reach','Engagement','Eng.Rate','Follower Growth','Web Traffic','Skor'].map(h=><th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{camps.map(c=>{ const cat = scoreCategory(c.score); return (<tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50/60"><td className="px-4 py-3"><div className="font-medium text-slate-900">{c.name}</div><div className="text-[10px] text-slate-500">{c.startDate} → {c.endDate}</div></td><td className="px-4 py-3 text-slate-600 text-xs">{c.objective}</td><td className="px-4 py-3 text-slate-600 text-xs">{c.target}</td><td className="px-4 py-3"><div className="flex gap-1">{c.platforms.map(p=><span key={p} className="w-2 h-2 rounded-full" title={p} style={{ background: colorOf(p) }} />)}</div></td><td className="px-4 py-3 text-slate-700">{c.contentPublished}</td><td className="px-4 py-3 text-slate-700">{formatNumber(c.reach)}</td><td className="px-4 py-3 text-slate-700">{formatNumber(c.engagement)}</td><td className="px-4 py-3"><span className="inline-flex px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold">{c.engagementRate}%</span></td><td className="px-4 py-3 text-emerald-600 font-medium">+{formatNumber(c.followerGrowth)}</td><td className="px-4 py-3 text-slate-700">{formatNumber(c.websiteTraffic)}</td><td className="px-4 py-3"><ScoreBadge score={c.score} category={cat} /></td></tr>)})}</tbody></table></div></Card>
-      <Card title="Perbandingan Skor Campaign"><ResponsiveContainer width="100%" height={260}><BarChart data={camps.map(c=>({ name: c.name, score: c.score, engagementRate: c.engagementRate }))} layout="vertical"><CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" horizontal={false} /><XAxis type="number" domain={[0,100]} tick={{ fontSize:11, fill:'#64748B' }} /><YAxis dataKey="name" type="category" tick={{ fontSize:11, fill:'#64748B' }} width={180} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="score" name="Performance Score" fill="#1D4ED8" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer></Card>
+      <Card title="Daftar Campaign" desc="Perbandingan seluruh campaign" className="!p-0 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-paper text-[11px] text-ink-muted"><tr>{['Campaign','Objective','Target','Platforms','Konten','Reach','Engagement','Eng.Rate','Follower Growth','Web Traffic','Skor'].map(h=><th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{camps.map(c=>{ const cat = scoreCategory(c.score); return (<tr key={c.id} className="border-t border-ink/[0.06] hover:bg-paper"><td className="px-4 py-3"><div className="font-medium text-ink">{c.name}</div><div className="text-[10px] text-ink-muted">{c.startDate} → {c.endDate}</div></td><td className="px-4 py-3 text-ink-soft text-xs">{c.objective}</td><td className="px-4 py-3 text-ink-soft text-xs">{c.target}</td><td className="px-4 py-3"><div className="flex gap-1">{c.platforms.map(p=><span key={p} className="w-2 h-2 rounded-full" title={p} style={{ background: colorOf(p) }} />)}</div></td><td className="px-4 py-3 text-ink-soft">{c.contentPublished}</td><td className="px-4 py-3 text-ink-soft">{formatNumber(c.reach)}</td><td className="px-4 py-3 text-ink-soft">{formatNumber(c.engagement)}</td><td className="px-4 py-3"><span className="inline-flex px-2 py-0.5 rounded-md bg-signal-soft text-signal text-xs font-semibold">{c.engagementRate}%</span></td><td className="px-4 py-3 text-emerald-600 font-medium">+{formatNumber(c.followerGrowth)}</td><td className="px-4 py-3 text-ink-soft">{formatNumber(c.websiteTraffic)}</td><td className="px-4 py-3"><ScoreBadge score={c.score} category={cat} /></td></tr>)})}</tbody></table></div></Card>
+      <Card title="Perbandingan Skor Campaign"><ResponsiveContainer width="100%" height={260}><BarChart data={camps.map(c=>({ name: c.name, score: c.score, engagementRate: c.engagementRate }))} layout="vertical"><CartesianGrid stroke="#E6EAF2" horizontal={false} /><XAxis axisLine={false} tickLine={false} type="number" domain={[0,100]} tick={{ fontSize:11, fill:'#5B6785' }} /><YAxis axisLine={false} tickLine={false} dataKey="name" type="category" tick={{ fontSize:11, fill:'#5B6785' }} width={180} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="score" name="Performance Score" fill="#2350E6" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer></Card>
       <AIInsightsPanel scope="campaign" context={{ campaigns: camps }} fallback={insights} />
     </div>
   )
@@ -561,7 +613,7 @@ export function CampaignView() {
 
 function CampaignSummary({ c, tone }) {
   const cat = scoreCategory(c.score)
-  return <div className="space-y-2"><div className="text-lg font-bold text-slate-900">{c.name}</div><div className="text-xs text-slate-500">{c.objective} · {c.startDate} → {c.endDate}</div><div className="grid grid-cols-3 gap-3 mt-3">{[['Reach',formatNumber(c.reach)],['Eng. Rate',c.engagementRate+'%'],['Follower',`+${formatNumber(c.followerGrowth)}`]].map(([k,v])=><div key={k}><div className="text-[10px] text-slate-500 uppercase">{k}</div><div className="text-base font-semibold text-slate-800">{v}</div></div>)}</div><div className="mt-2"><ScoreBadge score={c.score} category={cat} /></div></div>
+  return <div className="space-y-2"><div className="text-lg font-bold text-ink">{c.name}</div><div className="text-xs text-ink-muted">{c.objective} · {c.startDate} → {c.endDate}</div><div className="grid grid-cols-3 gap-3 mt-3">{[['Reach',formatNumber(c.reach)],['Eng. Rate',c.engagementRate+'%'],['Follower',`+${formatNumber(c.followerGrowth)}`]].map(([k,v])=><div key={k}><div className="text-[10px] text-ink-muted">{k}</div><div className="text-base font-semibold text-ink">{v}</div></div>)}</div><div className="mt-2"><ScoreBadge score={c.score} category={cat} /></div></div>
 }
 
 /* =========== BEST PERFORMING CONTENT =========== */
@@ -572,21 +624,21 @@ export function BestContentView({ days }) {
   const sortOptions = [ ['score','Performance Score'],['engagementRate','Engagement Rate'],['reach','Reach'],['views','Views'],['shares','Shares'],['saves','Saves'],['comments','Comments'] ]
   return (
     <div className="space-y-6">
-      <Card><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-slate-600 font-medium">Urutkan berdasarkan:</span>{sortOptions.map(([v,l])=><button key={v} onClick={()=>setSort(v)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${sort===v?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{l}</button>)}</div></Card>
+      <Card><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-ink-soft font-medium">Urutkan berdasarkan:</span>{sortOptions.map(([v,l])=><button key={v} onClick={()=>setSort(v)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${sort===v?'bg-ink text-white':'bg-ink/[0.05] text-ink-soft hover:bg-ink/[0.08]'}`}>{l}</button>)}</div></Card>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {sorted.map((c,i)=>{ const cat = scoreCategory(c.score); return (
-          <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition">
+          <div key={c.id} className="bg-white rounded-xl border border-ink/[0.08] overflow-hidden hover:shadow-md transition">
             <div className="h-32 flex items-center justify-center text-white text-3xl font-bold relative" style={{ background: `linear-gradient(135deg, ${c.platformColor} 0%, ${c.platformColor}88 100%)` }}>
               <div className="absolute top-3 left-3 text-[10px] bg-white/20 px-2 py-0.5 rounded backdrop-blur font-medium">#{i+1}</div>
               <div className="absolute top-3 right-3 text-[10px] bg-white/20 px-2 py-0.5 rounded backdrop-blur font-medium">{c.type}</div>
               <Trophy className="w-10 h-10 opacity-40" />
             </div>
             <div className="p-4">
-              <div className="text-[11px] text-slate-500">{c.platformName} · {c.date}</div>
-              <div className="text-sm font-semibold text-slate-900 mt-1 line-clamp-2">{c.title}</div>
-              <div className="text-xs text-slate-500 mt-1">{c.topic}</div>
+              <div className="text-[11px] text-ink-muted">{c.platformName} · {c.date}</div>
+              <div className="text-sm font-semibold text-ink mt-1 line-clamp-2">{c.title}</div>
+              <div className="text-xs text-ink-muted mt-1">{c.topic}</div>
               <div className="grid grid-cols-4 gap-2 mt-3 text-center">
-                {[['Views',formatNumber(c.views)],['Reach',formatNumber(c.reach)],['Eng.',formatNumber(c.engagement)],['Rate',c.engagementRate+'%']].map(([k,v])=><div key={k}><div className="text-[9px] text-slate-500 uppercase">{k}</div><div className="text-xs font-semibold text-slate-800">{v}</div></div>)}
+                {[['Views',formatNumber(c.views)],['Reach',formatNumber(c.reach)],['Eng.',formatNumber(c.engagement)],['Rate',c.engagementRate+'%']].map(([k,v])=><div key={k}><div className="text-[9px] text-ink-muted">{k}</div><div className="text-xs font-semibold text-ink">{v}</div></div>)}
               </div>
               <div className="mt-3"><ScoreBadge score={c.score} category={cat} /></div>
             </div>
@@ -622,9 +674,9 @@ export function RecommendationsView({ days }) {
   }, [days, items, perPlatformCurr, perPlatformPrev])
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 flex items-start gap-3"><Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" /><div><div className="font-semibold text-blue-900">Rekomendasi Berbasis Data</div><p className="text-sm text-blue-800 mt-1">Setiap rekomendasi dihitung otomatis dari performa aktual — bukan asumsi. Klik "Generate AI Insight" pada panel bawah untuk analisis mendalam dari LLM.</p></div></div>
+      <div className="rounded-2xl border border-blue-200 bg-signal-soft/60 p-5 flex items-start gap-3"><Info className="w-5 h-5 text-signal shrink-0 mt-0.5" /><div><div className="font-semibold text-blue-900">Rekomendasi Berbasis Data</div><p className="text-sm text-blue-800 mt-1">Setiap rekomendasi dihitung otomatis dari performa aktual — bukan asumsi. Klik "Generate AI Insight" pada panel bawah untuk analisis mendalam dari LLM.</p></div></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {recs.map((r,i)=>{ const Ic = r.icon; const cl = { emerald:'bg-emerald-50 text-emerald-700 border-emerald-200', blue:'bg-blue-50 text-blue-700 border-blue-200', violet:'bg-violet-50 text-violet-700 border-violet-200', cyan:'bg-cyan-50 text-cyan-700 border-cyan-200', amber:'bg-amber-50 text-amber-700 border-amber-200' }[r.tone]; return (
+        {recs.map((r,i)=>{ const Ic = r.icon; const cl = { emerald:'bg-emerald-50 text-emerald-700 border-emerald-200', blue:'bg-signal-soft text-signal border-blue-200', violet:'bg-violet-50 text-violet-700 border-violet-200', cyan:'bg-cyan-50 text-cyan-700 border-cyan-200', amber:'bg-amber-50 text-amber-700 border-amber-200' }[r.tone]; return (
           <div key={i} className={`rounded-2xl border p-5 ${cl}`}><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0"><Ic className="w-5 h-5" /></div><div className="min-w-0 flex-1"><div className="font-semibold">{r.title}</div><p className="text-sm mt-1.5 opacity-90">{r.desc}</p><div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/70 text-xs font-medium">💡 {r.action}</div></div></div></div>) })}
       </div>
       <AIInsightsPanel scope="recommendations" context={{ periode_hari: days, per_platform: perPlatformCurr, ringkasan: totalsCurr, top_types_by_engagement: (()=>{ const byType={}; items.forEach(c=>{ if(!byType[c.type])byType[c.type]={total:0,count:0}; byType[c.type].total+=c.engagementRate; byType[c.type].count++ }); return Object.entries(byType).map(([t,v])=>({type:t,avg_engagement_rate:+(v.total/v.count).toFixed(2)})).sort((a,b)=>b.avg_engagement_rate-a.avg_engagement_rate).slice(0,5) })() }} fallback={insights} />
@@ -644,7 +696,7 @@ export function ReportsView({ days }) {
   const camps = useMemo(() => generateCampaignMetrics(), [])
   const insights = generateInsights(totalsCurr, totalsPrev, perPlatformCurr)
   const top = [...items].sort((a,b)=>b.score-a.score).slice(0,5)
-  const REPORT_TYPES = [ { v:'monthly', l:'Monthly Report', i:FileText }, { v:'quarterly', l:'Quarterly Report', i:FileText }, { v:'annual', l:'Annual Report', i:FileText }, { v:'campaign', l:'Campaign Report', i:Rocket }, { v:'social', l:'Social Media Report', i:TrendingUp }, { v:'executive', l:'Executive Report', i:Building2 } ]
+  const REPORT_TYPES = [ { v:'monthly', l:'Laporan bulanan', i:FileText }, { v:'quarterly', l:'Laporan kuartalan', i:FileText }, { v:'annual', l:'Laporan tahunan', i:FileText }, { v:'campaign', l:'Laporan kampanye', i:Rocket }, { v:'social', l:'Laporan media sosial', i:TrendingUp }, { v:'executive', l:'Laporan eksekutif', i:Building2 } ]
   function exportExcel() {
     const rows = [
       ['Metrik','Nilai','Sebelumnya','Perubahan (%)'],
@@ -659,26 +711,118 @@ export function ReportsView({ days }) {
     const blob = new Blob(["\ufeff"+csv], { type:'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `laporan-${type}-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url)
   }
+  const rt = REPORT_TYPES.find(r=>r.v===type)
+  const periodLabel = days === 1 ? 'Hari ini' : `${days} hari terakhir`
+  const until = new Date(); const since = new Date(); since.setDate(since.getDate() - days + 1)
+  const rangeText = `${since.toLocaleDateString('id-ID',{ day:'numeric', month:'long', year:'numeric' })} – ${until.toLocaleDateString('id-ID',{ day:'numeric', month:'long', year:'numeric' })}`
+  const kpis = [
+    ['Jangkauan', formatNumber(totalsCurr.reach), pctChange(totalsCurr.reach, totalsPrev.reach)],
+    ['Engagement', formatNumber(totalsCurr.engagement), pctChange(totalsCurr.engagement, totalsPrev.engagement)],
+    ['Engagement rate', totalsCurr.engagementRate+'%', pctChange(totalsCurr.engagementRate, totalsPrev.engagementRate)],
+    ['Follower baru', '+'+formatNumber(totalsCurr.followerGrowth), pctChange(totalsCurr.followerGrowth, totalsPrev.followerGrowth)],
+  ]
+  const H2 = ({ children }) => <h2 className="text-[18px] font-extrabold text-ink mb-3 tracking-tight">{children}</h2>
   return (
     <div className="space-y-6">
-      <Card title="Pilih Jenis Laporan"><div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">{REPORT_TYPES.map(rt => { const Ic = rt.i; return (<button key={rt.v} onClick={()=>setType(rt.v)} className={`p-4 rounded-xl border text-left transition ${type===rt.v?'border-blue-500 bg-blue-50 shadow-sm':'border-slate-200 hover:border-slate-300'}`}><Ic className={`w-6 h-6 mb-2 ${type===rt.v?'text-blue-600':'text-slate-500'}`} /><div className={`text-sm font-semibold ${type===rt.v?'text-blue-900':'text-slate-800'}`}>{rt.l}</div></button>) })}</div><div className="flex gap-2 mt-5 flex-wrap"><button onClick={()=>setGenerated(true)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"><Sparkles className="w-4 h-4" />Generate Report</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Printer className="w-4 h-4" />Print</button><button onClick={exportExcel} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export Excel/CSV</button><button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><Download className="w-4 h-4" />Export PDF</button></div></Card>
-      {generated && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6 print:shadow-none print:border-0">
-          <div className="border-b border-slate-200 pb-4">
-            <div className="text-xs text-slate-500 uppercase tracking-widest">Laporan SocialPulse</div>
-            <h1 className="text-2xl font-bold text-slate-900 mt-1">{REPORT_TYPES.find(r=>r.v===type).l}</h1>
-            <p className="text-sm text-slate-500 mt-1">Periode: {days} hari terakhir · Digenerate {new Date().toLocaleDateString('id-ID',{ dateStyle:'long' })}</p>
-          </div>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Executive Summary</h2><p className="text-sm text-slate-700 leading-relaxed">Selama {days} hari, kanal digital Anda menjangkau {formatNumber(totalsCurr.reach)} orang dengan {formatNumber(totalsCurr.engagement)} engagement (rate {totalsCurr.engagementRate}%). Follower growth gabungan mencapai +{formatNumber(totalsCurr.followerGrowth)} pengguna baru dan sebanyak {totalsCurr.contentPublished} konten dipublikasikan.</p></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">KPI Utama</h2><div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[['Reach',formatNumber(totalsCurr.reach)],['Engagement',formatNumber(totalsCurr.engagement)],['Eng. Rate',totalsCurr.engagementRate+'%'],['Follower Growth','+'+formatNumber(totalsCurr.followerGrowth)]].map(([k,v])=><div key={k} className="rounded-lg border border-slate-200 p-3"><div className="text-[10px] uppercase text-slate-500">{k}</div><div className="text-lg font-bold text-slate-900">{v}</div></div>)}</div></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Performa per Platform</h2><table className="w-full text-sm border-t border-slate-100"><thead className="text-xs text-slate-500"><tr><th className="text-left py-2">Platform</th><th className="text-left">Followers</th><th className="text-left">Reach</th><th className="text-left">Eng. Rate</th></tr></thead><tbody>{platforms.map(p=>(<tr key={p.key} className="border-t border-slate-100"><td className="py-2">{p.name}</td><td>{formatNumber(perPlatformCurr[p.key].followers)}</td><td>{formatNumber(perPlatformCurr[p.key].reach)}</td><td>{perPlatformCurr[p.key].engagementRate}%</td></tr>))}</tbody></table></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Top 5 Konten Terbaik</h2><ol className="list-decimal list-inside space-y-1 text-sm text-slate-700">{top.map(c=><li key={c.id}><strong>{c.title}</strong> — {c.platformName}, {c.type} · Skor {c.score}</li>)}</ol></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Sentiment Publik</h2><p className="text-sm text-slate-700">Dari {formatNumber(sent.total)} komentar: Positif {sent.positivePct}% · Netral {sent.neutralPct}% · Negatif {sent.negativePct}%.</p></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Campaign Aktif</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{camps.slice(0,4).map(c=><li key={c.id}>{c.name} — Skor {c.score}, ER {c.engagementRate}%</li>)}</ul></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Key Findings</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{insights.findings.map((f,i)=><li key={i}>{f}</li>)}</ul></section>
-          <section><h2 className="text-lg font-bold text-slate-900 mb-2">Rekomendasi & Next Action Plan</h2><ul className="list-disc list-inside text-sm text-slate-700 space-y-1">{insights.actions.map((f,i)=><li key={i}>{f}</li>)}</ul></section>
-          <div className="text-center text-xs text-slate-400 pt-6 border-t border-slate-100">Laporan digenerate oleh SocialPulse Dashboard.</div>
+      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 print:hidden">
+        <div className="text-[13.5px] font-semibold text-ink mb-3">Jenis laporan</div>
+        <div role="radiogroup" aria-label="Jenis laporan" className="flex flex-wrap gap-2">
+          {REPORT_TYPES.map(r => { const Ic = r.i; const on = type===r.v; return (
+            <button key={r.v} role="radio" aria-checked={on} onClick={()=>{ setType(r.v) }}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-[13px] font-medium border transition-colors ${on ? 'bg-ink text-white border-ink' : 'bg-white text-ink-soft border-ink/10 hover:border-ink/25'}`}>
+              <Ic className="w-4 h-4" />{r.l}
+            </button>
+          ) })}
         </div>
+        <div className="flex gap-2 mt-5 flex-wrap items-center">
+          <button onClick={()=>setGenerated(true)} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-signal text-white text-[13.5px] font-semibold hover:bg-signal-deep"><Sparkles className="w-4 h-4" />{generated ? 'Perbarui laporan' : 'Buat laporan'}</button>
+          <span className="w-px h-6 bg-ink/10 mx-1 hidden sm:block" />
+          <button onClick={()=>window.print()} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-ink/10 text-[13.5px] font-medium text-ink-soft hover:bg-ink/[0.03] disabled:opacity-40"><Printer className="w-4 h-4" />Cetak / simpan PDF</button>
+          <button onClick={exportExcel} disabled={!generated} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-ink/10 text-[13.5px] font-medium text-ink-soft hover:bg-ink/[0.03] disabled:opacity-40"><Download className="w-4 h-4" />Unduh CSV</button>
+        </div>
+        {!generated && <p className="text-[12.5px] text-ink-muted mt-3">Pilih jenis laporan lalu klik Buat laporan. Pratinjau akan muncul di bawah dan bisa langsung dicetak.</p>}
+      </div>
+
+      {generated && (
+        <article className="bg-white rounded-2xl border border-ink/[0.08] overflow-hidden print:border-0 print:rounded-none">
+          {/* Sampul editorial */}
+          <header className="bg-ink text-white px-8 sm:px-12 pt-12 pb-10 relative overflow-hidden print:bg-ink" style={{ WebkitPrintColorAdjust:'exact', printColorAdjust:'exact' }}>
+            <svg className="absolute right-0 top-8 w-[55%] max-w-[460px] opacity-[0.12]" viewBox="0 0 400 120" fill="none" aria-hidden="true">
+              <path d="M0 90h70l20-48 32 88 20-40h50l18-60 30 70 20-30h140" stroke="#fff" strokeWidth="3" strokeLinejoin="round" />
+            </svg>
+            <div className="relative">
+              <span className="inline-block text-[12px] font-semibold px-3 py-1 rounded-full bg-white/10 text-white/80">Laporan SocialPulse</span>
+              <h1 className="text-[34px] sm:text-[44px] font-extrabold leading-[1.05] tracking-tight mt-5 max-w-[16ch]">{rt.l}</h1>
+              <p className="mt-4 text-[15px] text-white/70">{rangeText}</p>
+              <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-6 border-t border-white/15 pt-6">
+                {kpis.map(([k,v,ch]) => (
+                  <div key={k}>
+                    <div className="text-[12.5px] text-white/55">{k}</div>
+                    <div className="text-[24px] font-extrabold tabular mt-0.5">{v}</div>
+                    <div className={`text-[12px] font-semibold tabular ${ch >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{ch >= 0 ? '+' : ''}{ch}% dari periode lalu</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </header>
+
+          <div className="px-8 sm:px-12 py-10 space-y-10 text-ink-soft">
+            <section>
+              <H2>Ringkasan</H2>
+              <p className="text-[15px] leading-[1.7] max-w-[68ch]">Selama {periodLabel.toLowerCase()}, kanal digital Anda menjangkau <strong className="text-ink">{formatNumber(totalsCurr.reach)}</strong> orang dengan <strong className="text-ink">{formatNumber(totalsCurr.engagement)}</strong> engagement (rate {totalsCurr.engagementRate}%). Gabungan semua akun mendapat <strong className="text-ink">+{formatNumber(totalsCurr.followerGrowth)}</strong> follower baru, dan {totalsCurr.contentPublished} konten diterbitkan.</p>
+            </section>
+
+            <section>
+              <H2>Performa per platform</H2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[14px] tabular">
+                  <thead><tr className="text-left text-[12.5px] text-ink-muted border-b border-ink/10"><th className="py-2.5 font-medium">Platform</th><th className="font-medium text-right">Followers</th><th className="font-medium text-right">Jangkauan</th><th className="font-medium text-right">Engagement</th><th className="font-medium text-right">Eng. rate</th></tr></thead>
+                  <tbody>{platforms.map(p=>(<tr key={p.key} className="border-b border-ink/[0.06]"><td className="py-3"><span className="inline-flex items-center gap-2 font-semibold text-ink"><span className="w-2.5 h-2.5 rounded-full" style={{ background:p.color }} />{p.name}</span></td><td className="text-right">{formatNumber(perPlatformCurr[p.key].followers)}</td><td className="text-right">{formatNumber(perPlatformCurr[p.key].reach)}</td><td className="text-right">{formatNumber(perPlatformCurr[p.key].engagement)}</td><td className="text-right font-semibold text-ink">{perPlatformCurr[p.key].engagementRate}%</td></tr>))}</tbody>
+                </table>
+              </div>
+            </section>
+
+            <section>
+              <H2>Lima konten terbaik</H2>
+              <ol className="space-y-3">{top.map((c,i)=>(
+                <li key={c.id} className="flex gap-4 items-baseline">
+                  <span className="text-[22px] font-extrabold text-signal tabular w-6 shrink-0">{i+1}</span>
+                  <div className="flex-1 min-w-0"><div className="font-semibold text-ink">{c.title}</div><div className="text-[13px] text-ink-muted">{c.platformName} · {c.type}</div></div>
+                  <span className="text-[13px] font-semibold px-2.5 py-1 rounded-full bg-signal-soft text-signal tabular">Skor {c.score}</span>
+                </li>
+              ))}</ol>
+            </section>
+
+            <div className="grid sm:grid-cols-2 gap-10">
+              <section>
+                <H2>Sentimen publik</H2>
+                <div className="flex h-3 rounded-full overflow-hidden" role="img" aria-label={`Positif ${sent.positivePct}%, netral ${sent.neutralPct}%, negatif ${sent.negativePct}%`}>
+                  <div style={{ width:`${sent.positivePct}%` }} className="bg-growth" /><div style={{ width:`${sent.neutralPct}%` }} className="bg-ink/20" /><div style={{ width:`${sent.negativePct}%` }} className="bg-alert" />
+                </div>
+                <p className="text-[14px] mt-3">Dari {formatNumber(sent.total)} komentar: positif {sent.positivePct}%, netral {sent.neutralPct}%, negatif {sent.negativePct}%.</p>
+              </section>
+              <section>
+                <H2>Kampanye aktif</H2>
+                <ul className="space-y-2 text-[14px]">{camps.slice(0,4).map(c=><li key={c.id} className="flex justify-between gap-3"><span className="text-ink font-medium truncate">{c.name}</span><span className="tabular text-ink-muted shrink-0">Skor {c.score} · ER {c.engagementRate}%</span></li>)}</ul>
+              </section>
+            </div>
+
+            <section>
+              <H2>Temuan utama</H2>
+              <ul className="space-y-2.5 text-[14.5px] leading-relaxed max-w-[72ch]">{insights.findings.map((f,i)=><li key={i} className="pl-4 border-l-2 border-signal/40">{f}</li>)}</ul>
+            </section>
+
+            <section className="rounded-xl bg-paper p-6">
+              <H2>Rekomendasi langkah berikutnya</H2>
+              <ol className="space-y-2.5 text-[14.5px] leading-relaxed max-w-[72ch] list-decimal pl-5 marker:font-bold marker:text-signal">{insights.actions.map((f,i)=><li key={i}>{f}</li>)}</ol>
+            </section>
+
+            <footer className="text-[12px] text-ink-muted pt-6 border-t border-ink/10 flex justify-between flex-wrap gap-2">
+              <span>Dibuat dengan SocialPulse</span>
+              <span>{new Date().toLocaleDateString('id-ID',{ dateStyle:'long' })}</span>
+            </footer>
+          </div>
+        </article>
       )}
     </div>
   )
@@ -700,6 +844,8 @@ export function SettingsView({ plan = 'starter' }) {
   const [flash, setFlash] = useState(null)
   const [ayr, setAyr] = useState(null)
   const [ayrBusy, setAyrBusy] = useState(false)
+  const [oauthCfg, setOauthCfg] = useState(null)
+  const [busyProvider, setBusyProvider] = useState(null)
 
   const loadConns = async () => {
     setLoading(true)
@@ -734,11 +880,17 @@ export function SettingsView({ plan = 'starter' }) {
     try { await apiFetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
     setAyrBusy(false)
   }
+  const loadOauthCfg = async () => {
+    try { const r = await apiFetch('/api/oauth/config'); setOauthCfg(await r.json()) } catch {}
+  }
   useEffect(() => {
     loadConns()
     loadAyr()
+    loadOauthCfg()
     const onMsg = (e) => {
+      if (e.origin !== window.location.origin) return
       if (e.data?.type === 'oauth') {
+        setBusyProvider(null)
         setFlash({ ok: e.data.ok, provider: e.data.provider, message: e.data.message })
         loadConns()
         setTimeout(()=>setFlash(null), 6000)
@@ -748,15 +900,25 @@ export function SettingsView({ plan = 'starter' }) {
     return () => window.removeEventListener('message', onMsg)
   }, [])
 
-  function openOauth(provider) {
-    // Popup adalah navigasi penuh (bukan fetch), jadi identitas workspace
-    // dikirim lewat query param `owner`, bukan header x-actor-email.
-    const u = getCurrentUser()
-    const owner = u?.orgOwnerEmail || u?.email || ''
+  async function openOauth(provider) {
+    // Buka popup kosong lebih dulu (sinkron dengan klik) agar tidak diblokir
+    // browser, lalu minta URL otorisasi bertanda tangan dari server.
     const w = 620, h = 720
     const l = window.screenX + (window.outerWidth - w)/2
     const t = window.screenY + (window.outerHeight - h)/2
-    window.open(`/api/oauth/${provider}/start?owner=${encodeURIComponent(owner)}`, `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+    const popup = window.open('about:blank', `oauth_${provider}`, `width=${w},height=${h},left=${l},top=${t}`)
+    setBusyProvider(provider)
+    try {
+      const r = await apiFetch(`/api/oauth/${provider}/url`, { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok || !j.url) throw new Error(j.error || 'Gagal menyiapkan otorisasi')
+      if (popup && !popup.closed) popup.location.href = j.url
+      else window.location.href = j.url
+    } catch (e) {
+      try { popup && popup.close() } catch {}
+      setBusyProvider(null)
+      setFlash({ ok:false, provider: { meta:'Meta', google:'Google', tiktok:'TikTok' }[provider] || provider, message: String(e?.message || e) })
+    }
   }
   async function disconnect(provider) {
     if (!confirm(`Putuskan koneksi ${provider}? Semua token akan dihapus.`)) return
@@ -767,18 +929,52 @@ export function SettingsView({ plan = 'starter' }) {
   const meta = conns.find(c => c.provider === 'meta')
   const google = conns.find(c => c.provider === 'google')
 
-  const ALL_TABS = [ ['accounts','Akun Media Sosial'], ['api','API Connections'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
+  const ALL_TABS = [ ['accounts','Koneksi Media Sosial'], ['api','Integrasi Lanjutan'], ['website','Website Analytics'], ['refresh','Data Refresh'], ['users','Users & Roles'], ['stats','Statistik Dampak'], ['activity','Log Aktivitas'], ['digest','Notifikasi Email'], ['report','Report Settings'], ['org','Organisasi & Logo'] ]
   const TABS = ALL_TABS.filter(([key]) => allowedTabs.includes(key))
   useEffect(() => { if (!allowedTabs.includes(tab)) setTab(allowedTabs[0] || 'accounts') }, [plan])
-  const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-blue-50 text-blue-700 ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-slate-50 text-slate-700 ring-slate-200' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
+  const roles = [ { name:'Admin', desc:'Akses penuh dan kelola pengguna', color:'bg-red-50 text-red-700 ring-red-200' }, { name:'Analyst', desc:'Lihat data, generate laporan, tidak mengubah pengaturan', color:'bg-signal-soft text-signal ring-blue-200' }, { name:'Viewer', desc:'Hanya dapat melihat dashboard', color:'bg-paper text-ink-soft ring-ink/10' }, { name:'Executive', desc:'Akses Executive Summary dan Reports', color:'bg-amber-50 text-amber-700 ring-amber-200' } ]
 
-  const accountsRows = [
-    { platform:'Instagram', handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : 'Belum terhubung', color:'#E1306C', icon:Instagram, connected: !!meta?.ig_accounts?.length, subtitle: meta?.ig_accounts?.[0] && `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers · via Meta` },
-    { platform:'Facebook', handle: meta?.pages?.[0]?.name || 'Belum terhubung', color:'#1877F2', icon:Facebook, connected: !!meta?.pages?.length, subtitle: meta?.pages?.[0] && `Page ID ${meta.pages[0].id.slice(-6)} · via Meta` },
-    { platform:'YouTube', handle: google?.channels?.[0]?.title || 'Belum terhubung', color:'#FF0000', icon:Youtube, connected: !!google?.channels?.length, subtitle: google?.channels?.[0] && `${formatNumber(+google.channels[0].subscribers||0)} subscribers · via Google` },
-    { platform:'TikTok', handle:'Belum terhubung', color:'#111827', icon:Music2, connected: false, subtitle: 'Belum ada credentials TikTok Business API' },
-    { platform:'Website (GA4)', handle: google?.ga_properties?.[0]?.displayName || 'Belum terhubung', color:'#0EA5E9', icon:Globe, connected: !!google?.ga_properties?.length, subtitle: google?.ga_properties?.[0] && `Property ${google.ga_properties[0].id} · via Google` },
+  const tiktok = conns.find(c => c.provider === 'tiktok')
+  const providerCfg = oauthCfg?.providers || {}
+  const platformCards = [
+    { key:'instagram', platform:'Instagram', provider:'meta', color:'#E1306C', icon:Instagram, conn: meta, connected: !!meta?.ig_accounts?.length,
+      handle: meta?.ig_accounts?.[0]?.username ? '@'+meta.ig_accounts[0].username : null,
+      stat: meta?.ig_accounts?.[0] ? `${formatNumber(meta.ig_accounts[0].followers_count||0)} followers` : null,
+      items: (meta?.ig_accounts||[]).map(a => ({ id:a.id, label:'@'+a.username, sub:`${formatNumber(a.followers_count||0)} followers` })),
+      hint: meta && !meta.ig_accounts?.length ? 'Meta tersambung, tetapi belum ada akun Instagram Business/Creator yang tertaut ke Facebook Page. Tautkan di Meta Business Suite, lalu sambungkan ulang.' : 'Butuh akun Instagram Business/Creator yang tertaut ke Facebook Page.' },
+    { key:'facebook', platform:'Facebook', provider:'meta', color:'#1877F2', icon:Facebook, conn: meta, connected: !!meta?.pages?.length,
+      handle: meta?.pages?.[0]?.name || null,
+      stat: meta?.pages?.length ? `${meta.pages.length} Page terhubung` : null,
+      items: (meta?.pages||[]).map(p => ({ id:p.id, label:p.name, sub:p.category || p.id })),
+      hint: 'Login dengan akun Facebook yang menjadi admin Page.' },
+    { key:'youtube', platform:'YouTube', provider:'google', color:'#FF0000', icon:Youtube, conn: google, connected: !!google?.channels?.length,
+      handle: google?.channels?.[0]?.title || null,
+      stat: google?.channels?.[0] ? `${formatNumber(+google.channels[0].subscribers||0)} subscribers` : null,
+      items: (google?.channels||[]).map(c => ({ id:c.id, label:c.title, sub:`${formatNumber(+c.subscribers||0)} subs · ${formatNumber(+c.videos||0)} video` })),
+      hint: google && !google.channels?.length ? 'Akun Google tersambung, tetapi tidak memiliki channel YouTube. Pilih akun brand yang benar saat login.' : 'Login dengan akun Google pemilik channel.' },
+    { key:'tiktok', platform:'TikTok', provider:'tiktok', color:'#111827', icon:Music2, conn: tiktok, connected: !!tiktok,
+      handle: tiktok?.user?.display_name || (tiktok ? 'Akun TikTok' : null),
+      stat: tiktok?.user ? `${formatNumber(tiktok.user.follower_count||0)} followers · ${formatNumber(tiktok.user.video_count||0)} video` : null,
+      items: [],
+      hint: 'Login dengan akun TikTok Business/Creator.' },
+    { key:'website', platform:'Website (GA4)', provider:'google', color:'#0EA5E9', icon:Globe, conn: google, connected: !!google?.ga_properties?.length,
+      handle: google?.ga_properties?.[0]?.displayName || null,
+      stat: google?.ga_properties?.length ? `${google.ga_properties.length} properti GA4` : null,
+      items: (google?.ga_properties||[]).map(p => ({ id:p.id, label:p.displayName, sub:`${p.parent || ''} · ${p.id}` })),
+      hint: 'Login dengan akun Google yang punya akses ke properti GA4.' },
   ]
+  const liveCount = platformCards.filter(c => c.connected).length
+  const providerLabel = { meta:'Meta', google:'Google', tiktok:'TikTok' }
+  const statusOf = (c) => {
+    if (c.connected && c.conn?.needs_reconnect) return { tone:'amber', label:'Perlu sambung ulang' }
+    if (c.connected) return { tone:'emerald', label:'Live' }
+    if (oauthCfg && providerCfg[c.provider] && !providerCfg[c.provider].configured) return { tone:'slate', label:'Kredensial belum diset' }
+    if (c.conn) return { tone:'amber', label:'Akun tidak ditemukan' }
+    return { tone:'slate', label:'Belum terhubung' }
+  }
+  const toneCls = { emerald:'bg-emerald-50 text-emerald-700 ring-emerald-200', amber:'bg-amber-50 text-amber-700 ring-amber-200', slate:'bg-ink/[0.05] text-ink-soft ring-ink/10' }
+  const dotCls = { emerald:'bg-emerald-500', amber:'bg-amber-500', slate:'bg-slate-400' }
+  const copyText = (t) => { try { navigator.clipboard.writeText(t); setFlash({ ok:true, provider:'Disalin', message:t }); setTimeout(()=>setFlash(null), 2500) } catch {} }
 
   return (
     <div className="space-y-6">
@@ -787,112 +983,98 @@ export function SettingsView({ plan = 'starter' }) {
           {flash.ok ? '✅' : '⚠️'} <strong>{flash.provider}:</strong> {flash.message}
         </div>
       )}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-slate-900 text-white':'text-slate-600 hover:bg-slate-100'}`}>{l}</button>)}</div>
+      <div className="flex flex-wrap gap-2 border-b border-ink/10 pb-3">{TABS.map(([v,l])=><button key={v} onClick={()=>setTab(v)} className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${tab===v?'bg-ink text-white':'text-ink-soft hover:bg-ink/[0.05]'}`}>{l}</button>)}</div>
 
-      {tab==='accounts' && (<Card title="Social Media Accounts" desc="Status koneksi akun media sosial Anda"><div className="space-y-3">{accountsRows.map(a=>{ const Ic = a.icon; return (
-        <div key={a.platform} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: a.color+'18', color: a.color }}><Ic className="w-5 h-5" /></div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-slate-900">{a.platform}</div>
-            <div className="text-xs text-slate-500 font-mono">{a.handle}</div>
-            {a.subtitle && <div className="text-[11px] text-slate-500 mt-0.5">{a.subtitle}</div>}
+      {tab==='accounts' && (
+        <div className="space-y-5">
+          <div className="rounded-xl border border-ink/[0.08] bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 flex flex-wrap items-center gap-5">
+            <div className="flex-1 min-w-[220px]">
+              <div className="text-[11px] text-ink-muted/70 font-semibold">Status koneksi</div>
+              <div className="text-2xl font-semibold mt-1">{liveCount} dari {platformCards.length} sumber data live</div>
+              <div className="text-sm text-slate-300 mt-1">Sumber yang belum terhubung masih menampilkan data contoh (mock).</div>
+            </div>
+            <div className="flex gap-1.5" aria-hidden="true">{platformCards.map(c => { const Ic = c.icon; return (
+              <div key={c.key} title={c.platform} className={`w-10 h-10 rounded-xl flex items-center justify-center ring-1 ${c.connected ? 'bg-white/10 ring-white/20' : 'bg-white/[0.03] ring-white/10 opacity-40'}`}><Ic className="w-5 h-5" /></div>
+            )})}</div>
+            <button onClick={()=>{ loadConns(); loadOauthCfg() }} disabled={loading} className="text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-60">{loading ? 'Memuat…' : 'Muat ulang status'}</button>
           </div>
-          {a.connected ? (
-            <span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Live · Connected</span>
-          ) : (
-            <span className="text-xs px-2 py-1 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">Mock Data</span>
-          )}
-        </div>)})}</div></Card>)}
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {platformCards.map(c => {
+              const Ic = c.icon
+              const st = statusOf(c)
+              const cfg = providerCfg[c.provider]
+              const notConfigured = oauthCfg && cfg && !cfg.configured
+              const busy = busyProvider === c.provider
+              return (
+                <div key={c.key} className="rounded-xl border border-ink/[0.08] bg-white p-4 flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: c.color+'14', color: c.color }}><Ic className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-ink">{c.platform}</div>
+                      <div className="text-xs text-ink-muted truncate">{c.handle || `via ${providerLabel[c.provider]}`}</div>
+                    </div>
+                    <span className={`text-[11px] px-2 py-1 rounded-full ring-1 inline-flex items-center gap-1.5 font-medium whitespace-nowrap ${toneCls[st.tone]}`}><span className={`w-1.5 h-1.5 rounded-full ${dotCls[st.tone]} ${st.tone==='emerald'?'animate-pulse':''}`} />{st.label}</span>
+                  </div>
+
+                  {c.connected ? (
+                    <div className="text-sm text-ink-soft">{c.stat}</div>
+                  ) : (
+                    <div className="text-xs text-ink-muted leading-relaxed">{notConfigured ? <>Admin server perlu mengisi {cfg.missingEnv.map((e,i)=><span key={e}>{i>0 && ' & '}<code className="bg-ink/[0.05] px-1 rounded text-[10px]">{e}</code></span>)}. Lihat tab Integrasi Lanjutan.</> : c.hint}</div>
+                  )}
+
+                  {c.conn?.last_error && (
+                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 leading-relaxed">{c.conn.last_error}</div>
+                  )}
+
+                  {c.items.length > 1 && (
+                    <details className="text-xs text-ink-soft">
+                      <summary className="cursor-pointer select-none text-ink-muted hover:text-ink-soft">{c.items.length} akun tersedia</summary>
+                      <ul className="mt-2 space-y-1">{c.items.map(it => <li key={it.id} className="flex justify-between gap-2"><span className="font-medium text-ink-soft truncate">{it.label}</span><span className="text-ink-muted/70 truncate">{it.sub}</span></li>)}</ul>
+                    </details>
+                  )}
+
+                  <div className="mt-auto pt-1 flex items-center gap-2">
+                    {c.connected && !c.conn?.needs_reconnect ? (
+                      <>
+                        <button onClick={()=>openOauth(c.provider)} disabled={busy} className="flex-1 text-xs px-3 py-2 rounded-lg bg-ink/[0.05] text-ink-soft hover:bg-ink/[0.08] disabled:opacity-60">{busy ? 'Membuka…' : 'Sambungkan ulang'}</button>
+                        <button onClick={()=>disconnect(c.provider)} className="text-xs px-3 py-2 rounded-lg text-red-600 hover:bg-red-50">Putuskan</button>
+                      </>
+                    ) : (
+                      <button onClick={()=>openOauth(c.provider)} disabled={busy || notConfigured} className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: c.provider==='google' ? '#1F2937' : c.color }}>
+                        {busy ? 'Membuka jendela login…' : `${c.conn?.needs_reconnect ? 'Sambungkan ulang' : 'Hubungkan'} ${providerLabel[c.provider]}`}
+                      </button>
+                    )}
+                  </div>
+                  {(c.provider === 'meta' || c.provider === 'google') && !c.connected && (
+                    <div className="text-[10px] text-ink-muted/70 -mt-1">Satu login {providerLabel[c.provider]} sekaligus menghubungkan {c.provider==='meta' ? 'Instagram & Facebook' : 'YouTube & GA4'}.</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {tab==='api' && (
         <div className="space-y-4">
-          <Card title="Meta OAuth (Instagram + Facebook)" desc="Hubungkan akun Facebook Business untuk otorisasi Facebook Page + Instagram Business Account">
-            <div className="flex items-center gap-3 flex-wrap">
-              {meta ? (
-                <>
-                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{meta.pages?.length || 0} Facebook Page · {meta.ig_accounts?.length || 0} Instagram Business · Diperbarui {meta.updated_at ? new Date(meta.updated_at).toLocaleString('id-ID') : '—'}</div></div>
-                  <button onClick={()=>openOauth('meta')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                  <button onClick={()=>disconnect('meta')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                </>
-              ) : (
-                <>
-                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data Instagram & Facebook masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/meta/callback</code> sudah terdaftar di Meta App {process.env.NEXT_PUBLIC_META_APP_ID || ''}</div></div>
-                  <button onClick={()=>openOauth('meta')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#1877F2] text-white text-sm font-medium hover:bg-[#166FE5]"><Facebook className="w-4 h-4" />Hubungkan Meta</button>
-                </>
-              )}
-            </div>
-            {meta?.pages?.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Facebook Pages Terhubung</div>
-                <div className="space-y-1.5">{meta.pages.map(pg => <div key={pg.id} className="flex items-center gap-2 text-xs"><Facebook className="w-3.5 h-3.5 text-[#1877F2]" /><span className="font-medium text-slate-700">{pg.name}</span><span className="text-slate-500 font-mono">{pg.id}</span></div>)}</div>
-              </div>
-            )}
-            {meta?.ig_accounts?.length > 0 && (
-              <div className="mt-3 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Instagram Business Accounts</div>
-                <div className="space-y-1.5">{meta.ig_accounts.map(ig => <div key={ig.id} className="flex items-center gap-2 text-xs"><Instagram className="w-3.5 h-3.5 text-[#E1306C]" /><span className="font-medium text-slate-700">@{ig.username}</span><span className="text-slate-500">{formatNumber(ig.followers_count||0)} followers</span></div>)}</div>
-              </div>
-            )}
-          </Card>
-
-          <Card title="Google OAuth (YouTube + Analytics 4)" desc="Hubungkan akun Google untuk mengakses channel YouTube dan properti GA4">
-            <div className="flex items-center gap-3 flex-wrap">
-              {google ? (
-                <>
-                  <div className="flex-1"><div className="text-sm font-medium text-emerald-700">✅ Tersambung</div><div className="text-xs text-slate-500">{google.channels?.length || 0} YouTube Channel · {google.ga_properties?.length || 0} GA4 Property · Diperbarui {google.updated_at ? new Date(google.updated_at).toLocaleString('id-ID') : '—'}</div></div>
-                  <button onClick={()=>openOauth('google')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                  <button onClick={()=>disconnect('google')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                </>
-              ) : (
-                <>
-                  <div className="flex-1"><div className="text-sm text-slate-700">Belum tersambung — data YouTube & Website (GA4) masih menggunakan mock</div><div className="text-xs text-slate-500">Pastikan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/google/callback</code> sudah terdaftar di Google Cloud Console</div></div>
-                  <button onClick={()=>openOauth('google')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-800 text-sm font-medium hover:bg-slate-50"><svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC04" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Hubungkan Google</button>
-                </>
-              )}
-            </div>
-            {google?.channels?.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">YouTube Channels</div>
-                <div className="space-y-1.5">{google.channels.map(ch => <div key={ch.id} className="flex items-center gap-2 text-xs"><Youtube className="w-3.5 h-3.5 text-red-600" /><span className="font-medium text-slate-700">{ch.title}</span><span className="text-slate-500">{formatNumber(+ch.subscribers||0)} subs · {formatNumber(+ch.videos||0)} videos</span></div>)}</div>
-              </div>
-            )}
-            {google?.ga_properties?.length > 0 && (
-              <div className="mt-3 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">GA4 Properties</div>
-                <div className="space-y-1.5">{google.ga_properties.map(pr => <div key={pr.id} className="flex items-center gap-2 text-xs"><Globe className="w-3.5 h-3.5 text-sky-600" /><span className="font-medium text-slate-700">{pr.displayName}</span><span className="text-slate-500 font-mono">{pr.id}</span></div>)}</div>
-              </div>
-            )}
-          </Card>
-
-          <Card title="TikTok Business API" desc="Hubungkan akun TikTok Business/Creator untuk analitik follower dan video">
-            {(() => {
-              const tt = conns.find(c => c.provider === 'tiktok')
-              const [credCheck, setCredCheck] = [null, ()=>{}] // just derived
-              return (
-                <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background:'#11182718', color:'#111827' }}><Music2 className="w-5 h-5" /></div>
-                    <div className="flex-1 min-w-0">
-                      {tt ? (
-                        <><div className="text-sm font-medium text-emerald-700">✅ Tersambung sebagai {tt.user?.display_name || 'TikTok User'}</div>
-                        <div className="text-xs text-slate-500">{formatNumber(tt.user?.follower_count||0)} followers · {formatNumber(tt.user?.video_count||0)} videos · Diperbarui {tt.updated_at ? new Date(tt.updated_at).toLocaleString('id-ID') : '—'}</div></>
-                      ) : (
-                        <><div className="font-medium text-slate-900">Belum tersambung</div>
-                        <div className="text-xs text-slate-500">Set env <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_KEY</code> &amp; <code className="bg-slate-100 px-1 rounded text-[10px]">TIKTOK_CLIENT_SECRET</code> dari <a href="https://developers.tiktok.com/" className="text-blue-600 underline" target="_blank">TikTok for Developers</a>, dan daftarkan Redirect URI <code className="bg-slate-100 px-1 rounded text-[10px]">/api/oauth/tiktok/callback</code></div></>
-                      )}
-                    </div>
-                    {tt ? (
-                      <>
-                        <button onClick={()=>openOauth('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Sambungkan Ulang</button>
-                        <button onClick={()=>disconnect('tiktok')} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">✂️ Putuskan</button>
-                      </>
-                    ) : (
-                      <button onClick={()=>openOauth('tiktok')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-black text-white text-sm font-medium hover:bg-slate-800"><Music2 className="w-4 h-4" />Hubungkan TikTok</button>
-                    )}
+          <Card title="Setup Aplikasi Developer" desc={`Daftarkan Redirect URI berikut di console masing-masing platform. Meta Graph API ${oauthCfg?.graphVersion || ''}.`}>
+            <div className="space-y-3">
+              {Object.entries(providerCfg).map(([key, cfg]) => (
+                <div key={key} className="rounded-xl border border-ink/10 p-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="font-medium text-ink">{cfg.label}</div>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${cfg.configured ? toneCls.emerald : toneCls.amber}`}>{cfg.configured ? 'Kredensial terpasang' : `Belum diset: ${cfg.missingEnv.join(', ')}`}</span>
+                    <a href={cfg.console} target="_blank" rel="noreferrer" className="ml-auto text-xs text-signal hover:underline">Buka console ↗</a>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="flex-1 min-w-0 truncate text-[11px] bg-paper border border-ink/10 rounded-md px-2 py-1.5 text-ink-soft">{cfg.redirectUri}</code>
+                    <button onClick={()=>copyText(cfg.redirectUri)} className="text-xs px-2.5 py-1.5 rounded-md bg-ink/[0.05] hover:bg-ink/[0.08]">Salin</button>
                   </div>
                 </div>
-              )
-            })()}
+              ))}
+              {!oauthCfg && <div className="text-xs text-ink-muted">Memuat konfigurasi…</div>}
+            </div>
           </Card>
 
           <Card title="Ayrshare — Multi-Platform via 1 Integrasi" desc="Alternatif terpadu: hubungkan Instagram, Facebook, YouTube & TikTok via Ayrshare (tanpa perlu OAuth manual per platform)">
@@ -901,18 +1083,18 @@ export function SettingsView({ plan = 'starter' }) {
               <div className="flex-1 min-w-0">
                 {!ayr?.configured ? (
                   <>
-                    <div className="font-medium text-slate-900">Kredensial Ayrshare belum diset</div>
-                    <div className="text-xs text-slate-500">Set env <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_API_KEY</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_DOMAIN</code>, <code className="bg-slate-100 px-1 rounded text-[10px]">AYRSHARE_PRIVATE_KEY</code></div>
+                    <div className="font-medium text-ink">Kredensial Ayrshare belum diset</div>
+                    <div className="text-xs text-ink-muted">Set env <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_API_KEY</code>, <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_DOMAIN</code>, <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_PRIVATE_KEY</code></div>
                   </>
                 ) : !ayr?.hasProfile ? (
                   <>
-                    <div className="font-medium text-slate-900">Belum ada profile Ayrshare</div>
-                    <div className="text-xs text-slate-500">Klik "Hubungkan via Ayrshare" untuk membuat profile & mendapatkan URL koneksi akun sosial</div>
+                    <div className="font-medium text-ink">Belum ada profile Ayrshare</div>
+                    <div className="text-xs text-ink-muted">Klik "Hubungkan via Ayrshare" untuk membuat profile & mendapatkan URL koneksi akun sosial</div>
                   </>
                 ) : (
                   <>
                     <div className="text-sm font-medium text-emerald-700">✅ Profile aktif · {ayr.profile?.title}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-ink-muted">
                       {ayr.activeSocialAccounts?.length ? (
                         <>Akun terhubung: {ayr.activeSocialAccounts.join(', ')} · Post bulan ini {ayr.monthlyPostCount || 0}{ayr.monthlyPostQuota ? `/${ayr.monthlyPostQuota}` : ''}</>
                       ) : (
@@ -925,7 +1107,7 @@ export function SettingsView({ plan = 'starter' }) {
               {ayr?.hasProfile ? (
                 <>
                   <button onClick={startAyrConnect} disabled={ayrBusy} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">{ayrBusy ? 'Memproses…' : '🔗 Hubungkan / Tambah Akun'}</button>
-                  <button onClick={refreshAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-60">🔄 Refresh</button>
+                  <button onClick={refreshAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] disabled:opacity-60">🔄 Refresh</button>
                   <button onClick={disconnectAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60">✂️ Reset Profile</button>
                 </>
               ) : ayr?.configured ? (
@@ -933,8 +1115,8 @@ export function SettingsView({ plan = 'starter' }) {
               ) : null}
             </div>
             {ayr?.activeSocialAccounts?.length > 0 && (
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Akun Sosial via Ayrshare</div>
+              <div className="mt-4 border-t border-ink/[0.06] pt-3">
+                <div className="text-[11px] text-ink-muted font-semibold mb-2">Akun Sosial via Ayrshare</div>
                 <div className="flex flex-wrap gap-2">{ayr.activeSocialAccounts.map((s,i)=>(
                   <span key={s} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{s}{ayr.displayNames?.[i] ? ` — ${ayr.displayNames[i]}` : ''}
@@ -942,22 +1124,22 @@ export function SettingsView({ plan = 'starter' }) {
                 ))}</div>
               </div>
             )}
-            <div className="mt-3 text-[11px] text-slate-500">
+            <div className="mt-3 text-[11px] text-ink-muted">
               💡 Ayrshare menyatukan Instagram, Facebook, YouTube & TikTok dalam satu API. Ideal untuk kondisi dimana OAuth manual sulit disiapkan.
             </div>
           </Card>
         </div>
       )}
 
-      {tab==='website' && (<Card title="Website Analytics — Google Analytics 4" desc="Hubungkan via Google OAuth pada tab API Connections. Jika sudah tersambung, properti akan tampil di sini."><div className="text-sm text-slate-700">{google?.ga_properties?.length ? (<div className="space-y-2">{google.ga_properties.map(pr => <div key={pr.id} className="p-3 rounded-lg border border-slate-200 flex items-center gap-3"><Globe className="w-5 h-5 text-sky-600" /><div className="flex-1"><div className="font-medium">{pr.displayName}</div><div className="text-xs text-slate-500">{pr.parent} · Property ID <span className="font-mono">{pr.id}</span></div></div><span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Aktif</span></div>)}</div>) : <div className="text-slate-500">Belum ada GA4 property terhubung. Buka tab <strong>API Connections</strong> → Hubungkan Google.</div>}</div></Card>)}
+      {tab==='website' && (<Card title="Website Analytics — Google Analytics 4" desc="Hubungkan via Google OAuth pada tab API Connections. Jika sudah tersambung, properti akan tampil di sini."><div className="text-sm text-ink-soft">{google?.ga_properties?.length ? (<div className="space-y-2">{google.ga_properties.map(pr => <div key={pr.id} className="p-3 rounded-lg border border-ink/10 flex items-center gap-3"><Globe className="w-5 h-5 text-sky-600" /><div className="flex-1"><div className="font-medium">{pr.displayName}</div><div className="text-xs text-ink-muted">{pr.parent} · Property ID <span className="font-mono">{pr.id}</span></div></div><span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Aktif</span></div>)}</div>) : <div className="text-ink-muted">Belum ada GA4 property terhubung. Buka tab <strong>API Connections</strong> → Hubungkan Google.</div>}</div></Card>)}
 
-      {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-slate-900">{n}</div><div className="text-xs text-slate-500">{d}</div></div></div>))}</div></Card>)}
+      {tab==='refresh' && (<Card title="Data Refresh" desc="Interval sinkronisasi data"><div className="space-y-3">{[['Real-time','Setiap 5 menit','off'],['Sering','Setiap 15 menit','on'],['Standar','Setiap 1 jam','off'],['Hemat','Setiap 6 jam','off']].map(([n,d,s])=>(<div key={n} className="flex items-center gap-3 p-3 rounded-lg border border-ink/10"><input type="radio" name="refresh" defaultChecked={s==='on'} className="w-4 h-4" /><div className="flex-1"><div className="font-medium text-ink">{n}</div><div className="text-xs text-ink-muted">{d}</div></div></div>))}</div></Card>)}
       {tab==='users' && <UsersRolesTab roles={roles} />}
       {tab==='stats' && <ImpactStatsTab />}
       {tab==='activity' && <ActivityLogsTab />}
       {tab==='digest' && <WeeklyDigestTab />}
-      {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Nama Bisnis Anda'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}</div></Card>)}
-      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-slate-900 flex items-center justify-center text-white ring-1 ring-slate-200"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Organisasi/Bisnis',''],['Grup/Induk Perusahaan (opsional)',''],['Situs Resmi','https://bisnisanda.com'],['Kontak Publik','kontak@bisnisanda.com']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-slate-600">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm">Ganti Logo</button></div></div></Card>)}
+      {tab==='report' && (<Card title="Report Settings"><div className="space-y-3">{[['Default periode laporan','30 hari terakhir'],['Kop laporan','Nama Bisnis Anda'],['Bahasa','Bahasa Indonesia'],['Format tanggal','DD MMMM YYYY']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-ink-soft">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm" /></div>)}</div></Card>)}
+      {tab==='org' && (<Card title="Organisasi & Logo"><div className="flex items-center gap-6"><div className="w-32 h-32 rounded-2xl bg-ink flex items-center justify-center text-white ring-1 ring-ink/10"><ShieldCheck className="w-16 h-16" /></div><div className="flex-1 space-y-3">{[['Nama Organisasi/Bisnis',''],['Grup/Induk Perusahaan (opsional)',''],['Situs Resmi','https://bisnisanda.com'],['Kontak Publik','kontak@bisnisanda.com']].map(([k,v])=><div key={k}><label className="text-xs font-medium text-ink-soft">{k}</label><input defaultValue={v} className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm" /></div>)}<button className="mt-2 px-4 py-2 rounded-lg bg-ink text-white text-sm">Ganti Logo</button></div></div></Card>)}
     </div>
   )
 }
@@ -1014,7 +1196,7 @@ export function ExecutiveSummaryView({ days }) {
     setLoading(true)
     try {
       const context = { periode_hari: days, overall_score: overallScore, category: cat.label, totals: totalsCurr, previous: totalsPrev, per_platform: perPlatformCurr, website: w.totals, top_content: topContent && { title: topContent.title, platform: topContent.platformName, score: topContent.score } }
-      const r = await fetch('/api/ai-insights', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ context, scope:'executive-summary-paragraphs' }) })
+      const r = await apiFetch('/api/ai-insights', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ context, scope:'executive-summary-paragraphs' }) })
       const j = await r.json()
       if (j.insights) {
         // Merge into 5 short paragraphs
@@ -1035,17 +1217,17 @@ export function ExecutiveSummaryView({ days }) {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Hero */}
-      <div className="rounded-3xl overflow-hidden shadow-xl border border-slate-200">
-        <div className="bg-slate-900 text-white p-8">
+      <div className="rounded-3xl overflow-hidden shadow-xl border border-ink/10">
+        <div className="bg-ink text-white p-8">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200/80 font-semibold">Executive Summary · Untuk Pimpinan</div>
+              <div className="text-[10px] text-blue-200/80 font-semibold">Executive Summary · Untuk Pimpinan</div>
               <h2 className="text-2xl font-bold mt-2">Performa Digital Periode Ini</h2>
               <p className="text-sm text-blue-100/80 mt-1">{days} hari terakhir</p>
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
-                <div className="text-[10px] uppercase tracking-widest text-blue-200/70">Overall Score</div>
+                <div className="text-[10px] text-blue-200/70">Overall Score</div>
                 <div className="text-6xl font-black leading-none mt-1">{overallScore}<span className="text-2xl opacity-70">/100</span></div>
                 <div className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: cat.color+'30', color:'#fff', border:`1px solid ${cat.color}` }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: cat.color }} />{cat.label}</div>
               </div>
@@ -1061,8 +1243,8 @@ export function ExecutiveSummaryView({ days }) {
             { l:'Website Traffic', v: formatNumber(w.totals.users), c: pctChange(w.totals.users, Math.round(w.totals.users*0.92)) },
           ].map(k => (
             <div key={k.l} className="p-5 text-center">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{k.l}</div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">{k.v}</div>
+              <div className="text-[10px] text-ink-muted font-semibold">{k.l}</div>
+              <div className="text-2xl font-bold text-ink mt-1">{k.v}</div>
               <div className={`text-xs font-semibold mt-1 ${k.c>=0?'text-emerald-600':'text-red-500'}`}>{k.c>=0?'▲ +':'▼ '}{k.c}%</div>
             </div>
           ))}
@@ -1079,28 +1261,28 @@ export function ExecutiveSummaryView({ days }) {
           <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center"><XCircle className="w-5 h-5" /></div><h3 className="font-bold text-amber-900">3 Hal Perlu Diperhatikan</h3></div>
           <ol className="space-y-2.5">{concerns.map((c,i)=><li key={i} className="text-sm text-amber-900/90 flex gap-2"><span className="font-bold text-amber-700">{i+1}.</span><span>{c}</span></li>)}</ol>
         </div>
-        <div className="rounded-2xl bg-blue-50/60 border border-blue-200 p-5">
-          <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center"><Rocket className="w-5 h-5" /></div><h3 className="font-bold text-blue-900">3 Rekomendasi Utama</h3></div>
-          <ol className="space-y-2.5">{recs.map((r,i)=><li key={i} className="text-sm text-blue-900/90 flex gap-2"><span className="font-bold text-blue-700">{i+1}.</span><span>{r}</span></li>)}</ol>
+        <div className="rounded-2xl bg-signal-soft/60 border border-blue-200 p-5">
+          <div className="flex items-center gap-2 mb-3"><div className="w-9 h-9 rounded-lg bg-signal text-white flex items-center justify-center"><Rocket className="w-5 h-5" /></div><h3 className="font-bold text-blue-900">3 Rekomendasi Utama</h3></div>
+          <ol className="space-y-2.5">{recs.map((r,i)=><li key={i} className="text-sm text-blue-900/90 flex gap-2"><span className="font-bold text-signal">{i+1}.</span><span>{r}</span></li>)}</ol>
         </div>
       </div>
 
       {/* AI Summary paragraphs */}
-      <Card title="Ringkasan AI untuk Pimpinan" desc="Analisis eksekutif maksimal 5 paragraf pendek — Bahasa Indonesia" right={<button onClick={runAI} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-800 disabled:opacity-60"><Sparkles className={`w-3.5 h-3.5 ${loading?'animate-pulse':''}`} />{loading?'Menganalisis…':'Generate AI Summary'}</button>}>
-        {!aiSummary && <p className="text-sm text-slate-500 italic">Klik tombol "Generate AI Summary" untuk memperoleh ringkasan naratif berbasis LLM (Claude Sonnet 4.5) untuk keperluan pimpinan.</p>}
-        {aiSummary && <div className="space-y-3">{aiSummary.map((p,i)=>(<p key={i} className="text-sm text-slate-700 leading-relaxed">{p}</p>))}</div>}
+      <Card title="Ringkasan AI untuk Pimpinan" desc="Analisis eksekutif maksimal 5 paragraf pendek — Bahasa Indonesia" right={<button onClick={runAI} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-ink text-white text-xs font-medium hover:bg-ink-soft disabled:opacity-60"><Sparkles className={`w-3.5 h-3.5 ${loading?'animate-pulse':''}`} />{loading?'Menganalisis…':'Generate AI Summary'}</button>}>
+        {!aiSummary && <p className="text-sm text-ink-muted italic">Klik tombol "Generate AI Summary" untuk memperoleh ringkasan naratif berbasis LLM (Claude Sonnet 4.5) untuk keperluan pimpinan.</p>}
+        {aiSummary && <div className="space-y-3">{aiSummary.map((p,i)=>(<p key={i} className="text-sm text-ink-soft leading-relaxed">{p}</p>))}</div>}
       </Card>
 
       {/* Mini trend */}
       <Card title="Tren Engagement Rate Periode Ini" desc="Konsistensi performa harian">
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={trend}>
-            <defs><linearGradient id="exG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1D4ED8" stopOpacity={0.35} /><stop offset="100%" stopColor="#1D4ED8" stopOpacity={0} /></linearGradient></defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={fmtShortDate} minTickGap={20} />
-            <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={v=>v+'%'} />
+            <defs><linearGradient id="exG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2350E6" stopOpacity={0.35} /><stop offset="100%" stopColor="#2350E6" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid stroke="#E6EAF2" vertical={false} />
+            <XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} />
+            <YAxis tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={v=>v+'%'} />
             <Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} />
-            <Area type="monotone" name="Eng. Rate" dataKey="engagementRate" stroke="#1D4ED8" strokeWidth={2.4} fill="url(#exG)" />
+            <Area type="monotone" name="Eng. Rate" dataKey="engagementRate" stroke="#2350E6" strokeWidth={2.4} fill="url(#exG)" />
           </AreaChart>
         </ResponsiveContainer>
       </Card>
@@ -1110,7 +1292,7 @@ export function ExecutiveSummaryView({ days }) {
 
 /* =========== CONTENT CALENDAR =========== */
 const STATUS_CFG = {
-  Draft:      { bg:'bg-slate-100', text:'text-slate-700', ring:'ring-slate-300', dot:'#94a3b8' },
+  Draft:      { bg:'bg-ink/[0.05]', text:'text-ink-soft', ring:'ring-slate-300', dot:'#94a3b8' },
   Scheduled:  { bg:'bg-amber-100', text:'text-amber-800', ring:'ring-amber-300', dot:'#f59e0b' },
   Published:  { bg:'bg-emerald-100', text:'text-emerald-800', ring:'ring-emerald-300', dot:'#10b981' },
 }
@@ -1194,25 +1376,25 @@ export function ContentCalendarView() {
       <Card>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <button onClick={()=>setMonthOffset(m => m-1)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">‹</button>
-            <div className="min-w-[180px] text-center"><div className="text-[10px] uppercase text-slate-500 tracking-wider">Bulan</div><div className="font-semibold text-slate-900 capitalize">{monthName}</div></div>
-            <button onClick={()=>setMonthOffset(m => m+1)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">›</button>
-            <button onClick={()=>setMonthOffset(0)} className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs">Bulan ini</button>
+            <button onClick={()=>setMonthOffset(m => m-1)} className="px-3 py-1.5 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] text-sm">‹</button>
+            <div className="min-w-[180px] text-center"><div className="text-[10px] text-ink-muted">Bulan</div><div className="font-semibold text-ink capitalize">{monthName}</div></div>
+            <button onClick={()=>setMonthOffset(m => m+1)} className="px-3 py-1.5 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] text-sm">›</button>
+            <button onClick={()=>setMonthOffset(0)} className="px-3 py-1.5 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] text-xs">Bulan ini</button>
           </div>
           <Select label="Platform" value={platformFilter} onChange={setPlatformFilter} options={[{v:'all',l:'Semua Platform'}, ...platforms.map(p=>({v:p.key,l:p.name}))]} />
-          <div className="ml-auto flex items-center gap-3 text-xs text-slate-600">
+          <div className="ml-auto flex items-center gap-3 text-xs text-ink-soft">
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Draft.dot }} />Draft: <strong>{stats.draft}</strong></span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Scheduled.dot }} />Terjadwal: <strong>{stats.scheduled}</strong></span>
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background:STATUS_CFG.Published.dot }} />Terbit: <strong>{stats.published}</strong></span>
           </div>
-          <button onClick={()=>setModal({ date: today.toISOString().slice(0,10) })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">+ Konten Baru</button>
+          <button onClick={()=>setModal({ date: today.toISOString().slice(0,10) })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ink text-white text-sm font-medium hover:bg-ink-soft">+ Konten Baru</button>
         </div>
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Calendar grid */}
-        <div className="xl:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="grid grid-cols-7 bg-slate-50/70 text-[11px] uppercase font-semibold text-slate-500 tracking-wider">
+        <div className="xl:col-span-3 bg-white rounded-xl border border-ink/[0.08] overflow-hidden">
+          <div className="grid grid-cols-7 bg-paper text-[11px] font-semibold text-ink-muted">
             {['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map(d => <div key={d} className="px-3 py-2.5 text-center">{d}</div>)}
           </div>
           <div className="grid grid-cols-7">
@@ -1222,9 +1404,9 @@ export function ContentCalendarView() {
               const dayItems = itemsOn(d)
               return (
                 <div key={i} onClick={()=>d && setModal({ date: d.toISOString().slice(0,10) })}
-                  className={`min-h-[110px] p-2 border-b border-r border-slate-100 relative group cursor-pointer ${inMonth ? 'bg-white hover:bg-blue-50/40' : 'bg-slate-50/40'}`}>
+                  className={`min-h-[110px] p-2 border-b border-r border-ink/[0.06] relative group cursor-pointer ${inMonth ? 'bg-white hover:bg-signal-soft/40' : 'bg-paper/40'}`}>
                   {inMonth && (<>
-                    <div className={`text-xs font-semibold mb-1 ${isToday ? 'inline-flex w-6 h-6 rounded-full bg-blue-600 text-white items-center justify-center' : 'text-slate-500'}`}>{d.getDate()}</div>
+                    <div className={`text-xs font-semibold mb-1 ${isToday ? 'inline-flex w-6 h-6 rounded-full bg-signal text-white items-center justify-center' : 'text-ink-muted'}`}>{d.getDate()}</div>
                     <div className="space-y-1">
                       {dayItems.slice(0,3).map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; const hasLinks = it.publishedUrls && Object.keys(it.publishedUrls).length > 0; return (
                         <div key={it.id} onClick={(e)=>{ e.stopPropagation(); setModal({ date: it.date, item: it }) }}
@@ -1234,7 +1416,7 @@ export function ContentCalendarView() {
                           <span className="truncate">{it.title}</span>
                           {hasLinks && <span className="ml-auto text-[9px] shrink-0" title="Sudah dipublikasi — ada tautan post">🔗</span>}
                         </div>) })}
-                      {dayItems.length > 3 && <div className="text-[10px] text-slate-500">+{dayItems.length-3} lainnya</div>}
+                      {dayItems.length > 3 && <div className="text-[10px] text-ink-muted">+{dayItems.length-3} lainnya</div>}
                     </div>
                   </>)}
                 </div>
@@ -1247,12 +1429,12 @@ export function ContentCalendarView() {
         <div className="space-y-4">
           <Card title="🗓️ Akan Tayang" desc={`${upcoming.length} konten terjadwal`}>
             <div className="space-y-2 max-h-[420px] overflow-y-auto">
-              {upcoming.length === 0 && <div className="text-xs text-slate-500 italic">Belum ada konten dijadwalkan.</div>}
+              {upcoming.length === 0 && <div className="text-xs text-ink-muted italic">Belum ada konten dijadwalkan.</div>}
               {upcoming.map(it => { const st = STATUS_CFG[it.status] || STATUS_CFG.Draft; return (
-                <div key={it.id} onClick={()=>setModal({ date: it.date, item: it })} className="p-2.5 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50/40 cursor-pointer transition">
-                  <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded ${st.bg} ${st.text}`}>{it.status}</span></div>
-                  <div className="text-xs font-medium text-slate-800 line-clamp-2">{it.title}</div>
-                  <div className="text-[10px] text-slate-500 mt-1">{new Date(it.date).toLocaleDateString('id-ID', { weekday:'short', day:'2-digit', month:'short' })}</div>
+                <div key={it.id} onClick={()=>setModal({ date: it.date, item: it })} className="p-2.5 rounded-lg border border-ink/[0.06] hover:border-blue-300 hover:bg-signal-soft/40 cursor-pointer transition">
+                  <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-ink-muted tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className={`ml-auto text-[9px] px-1.5 py-0.5 rounded ${st.bg} ${st.text}`}>{it.status}</span></div>
+                  <div className="text-xs font-medium text-ink line-clamp-2">{it.title}</div>
+                  <div className="text-[10px] text-ink-muted mt-1">{new Date(it.date).toLocaleDateString('id-ID', { weekday:'short', day:'2-digit', month:'short' })}</div>
                 </div>
               )})}
             </div>
@@ -1266,9 +1448,9 @@ export function ContentCalendarView() {
                   {publishedWithLinks.map(it => (
                     <div key={it.id} className="p-2.5 rounded-lg border border-emerald-100 bg-emerald-50/40">
                       <div onClick={()=>setModal({ date: it.date, item: it })} className="cursor-pointer">
-                        <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">✓ Published</span></div>
-                        <div className="text-xs font-medium text-slate-800 line-clamp-2">{it.title}</div>
-                        {it.publishedAt && <div className="text-[10px] text-slate-500 mt-0.5">{new Date(it.publishedAt).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'})}</div>}
+                        <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(it.platform) }} /><span className="text-[10px] font-medium text-ink-muted tracking-wide">{labelOf(it.platform)} · {it.type}</span><span className="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">✓ Published</span></div>
+                        <div className="text-xs font-medium text-ink line-clamp-2">{it.title}</div>
+                        {it.publishedAt && <div className="text-[10px] text-ink-muted mt-0.5">{new Date(it.publishedAt).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'})}</div>}
                       </div>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {Object.entries(it.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
@@ -1353,40 +1535,40 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[92vh] overflow-y-auto">
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><FileText className="w-5 h-5" /></div>
-          <div><h3 className="font-semibold text-slate-900">{it ? 'Edit Konten' : 'Konten Baru'}</h3><p className="text-xs text-slate-500">Rencanakan konten untuk kalender editorial</p></div>
+        <div className="p-5 border-b border-ink/[0.06] flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-signal-soft text-signal flex items-center justify-center"><FileText className="w-5 h-5" /></div>
+          <div><h3 className="font-semibold text-ink">{it ? 'Edit Konten' : 'Konten Baru'}</h3><p className="text-xs text-ink-muted">Rencanakan konten untuk kalender editorial</p></div>
         </div>
         <div className="p-5 space-y-3">
-          <Field label="Judul Konten"><input value={form.title} onChange={e=>{setForm(f=>({...f, title:e.target.value})); if(!caption) setCaption(e.target.value+'\n\n#SocialPulse')}} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
+          <Field label="Judul Konten"><input value={form.title} onChange={e=>{setForm(f=>({...f, title:e.target.value})); if(!caption) setCaption(e.target.value+'\n\n#SocialPulse')}} placeholder="cth: Peluang Karier Vokasi 2025" className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Tanggal"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f, date:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" /></Field>
+            <Field label="Tanggal"><input type="date" value={form.date} onChange={e=>setForm(f=>({...f, date:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm" /></Field>
             <Field label="Status">
-              <select value={form.status} onChange={e=>setForm(f=>({...f, status:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              <select value={form.status} onChange={e=>setForm(f=>({...f, status:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
                 <option>Draft</option><option>Scheduled</option><option>Published</option>
               </select>
             </Field>
             <Field label="Platform Utama">
-              <select value={form.platform} onChange={e=>setForm(f=>({...f, platform:e.target.value, type: (TYPES[e.target.value]||[])[0]}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              <select value={form.platform} onChange={e=>setForm(f=>({...f, platform:e.target.value, type: (TYPES[e.target.value]||[])[0]}))} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
                 {platforms.map(p=><option key={p.key} value={p.key}>{p.name}</option>)}
               </select>
             </Field>
             <Field label="Tipe Konten">
-              <select value={form.type} onChange={e=>setForm(f=>({...f, type:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              <select value={form.type} onChange={e=>setForm(f=>({...f, type:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
                 {(TYPES[form.platform]||[]).map(t=><option key={t}>{t}</option>)}
               </select>
             </Field>
           </div>
           <Field label="Topik">
-            <select value={form.topic} onChange={e=>setForm(f=>({...f, topic:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+            <select value={form.topic} onChange={e=>setForm(f=>({...f, topic:e.target.value}))} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
               {TOPICS.map(t=><option key={t}>{t}</option>)}
             </select>
           </Field>
 
           {/* Publish via Ayrshare toggle */}
-          <div className="pt-2 border-t border-slate-100">
+          <div className="pt-2 border-t border-ink/[0.06]">
             <button type="button" onClick={()=>setShowPublish(v=>!v)} className="w-full flex items-center gap-2 text-sm font-semibold text-indigo-700 hover:text-indigo-900">
               <span className="text-lg">{showPublish?'▾':'▸'}</span>
               🚀 Publish Multi-Platform via Ayrshare
@@ -1400,23 +1582,23 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                   <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 px-2.5 py-1.5 rounded">⚠️ Belum ada akun sosial ter-link. Klik "Hubungkan / Tambah Akun" di Settings.</div>
                 )}
                 {ayrStatus?.activeSocialAccounts?.length > 0 && (
-                  <div className="text-[11px] text-slate-600">✅ Akun aktif: <strong>{ayrStatus.activeSocialAccounts.join(', ')}</strong></div>
+                  <div className="text-[11px] text-ink-soft">✅ Akun aktif: <strong>{ayrStatus.activeSocialAccounts.join(', ')}</strong></div>
                 )}
                 <Field label="Caption">
-                  <textarea value={caption} onChange={e=>setCaption(e.target.value)} rows={3} placeholder="Tulis caption menarik dengan hashtag…" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none" />
+                  <textarea value={caption} onChange={e=>setCaption(e.target.value)} rows={3} placeholder="Tulis caption menarik dengan hashtag…" className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm resize-none" />
                 </Field>
                 <Field label="URL Media (opsional, harus HTTPS publik)">
-                  <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} placeholder="https://.../gambar.jpg atau video.mp4" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} placeholder="https://.../gambar.jpg atau video.mp4" className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm" />
                 </Field>
 
                 {/* Preview panel */}
                 <ContentPreview caption={caption} mediaUrl={mediaUrl} platforms={pubPlatforms} />
 
                 <div>
-                  <div className="text-xs font-medium text-slate-600 mb-1.5">Platform Tujuan</div>
+                  <div className="text-xs font-medium text-ink-soft mb-1.5">Platform Tujuan</div>
                   <div className="flex flex-wrap gap-2">
                     {[['facebook','Facebook','#1877F2'],['instagram','Instagram','#E1306C'],['youtube','YouTube','#FF0000'],['tiktok','TikTok','#111827']].map(([k,l,c])=>(
-                      <label key={k} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${pubPlatforms[k]?'bg-white border-indigo-400 ring-1 ring-indigo-200':'bg-slate-50 border-slate-200'}`}>
+                      <label key={k} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${pubPlatforms[k]?'bg-white border-indigo-400 ring-1 ring-indigo-200':'bg-paper border-ink/10'}`}>
                         <input type="checkbox" checked={pubPlatforms[k]} onChange={e=>setPubPlatforms(p=>({...p,[k]:e.target.checked}))} className="w-3.5 h-3.5" />
                         <span style={{ color: pubPlatforms[k]?c:'#94A3B8', fontWeight:600 }}>{l}</span>
                       </label>
@@ -1425,16 +1607,16 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Jadwal (jam)">
-                    <input type="time" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+                    <input type="time" value={scheduleTime} onChange={e=>setScheduleTime(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-ink/10 text-sm" />
                   </Field>
-                  <div className="flex items-end"><div className="text-[11px] text-slate-500">Publish di tanggal <strong>{new Date(form.date).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'})}</strong></div></div>
+                  <div className="flex items-end"><div className="text-[11px] text-ink-muted">Publish di tanggal <strong>{new Date(form.date).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'})}</strong></div></div>
                 </div>
                 {publishResult && (
                   <div className={`text-xs px-2.5 py-2 rounded ${publishResult.ok?'bg-emerald-50 text-emerald-800 border border-emerald-200':'bg-red-50 text-red-800 border border-red-200'}`}>
                     <div>{publishResult.ok?'✅ ':'❌ '}{publishResult.message}</div>
                     {publishResult.ok && publishResult.publishedUrls && Object.keys(publishResult.publishedUrls).length > 0 && (
                       <div className="mt-2 pt-2 border-t border-emerald-200">
-                        <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">🔗 Tautan ke Post Asli</div>
+                        <div className="text-[10px] text-emerald-700 font-semibold mb-1.5">🔗 Tautan ke Post Asli</div>
                         <div className="flex flex-wrap gap-1.5">
                           {Object.entries(publishResult.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
                         </div>
@@ -1448,7 +1630,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 {/* Show existing publishedUrls if item was previously published */}
                 {!publishResult && it?.publishedUrls && Object.keys(it.publishedUrls).length > 0 && (
                   <div className="text-xs px-2.5 py-2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1.5">🔗 Tautan Post yang Sudah Dipublikasi</div>
+                    <div className="text-[10px] text-emerald-700 font-semibold mb-1.5">🔗 Tautan Post yang Sudah Dipublikasi</div>
                     <div className="flex flex-wrap gap-1.5">
                       {Object.entries(it.publishedUrls).map(([plat,url]) => <PostLinkBadge key={plat} platform={plat} url={url} />)}
                     </div>
@@ -1463,16 +1645,16 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
             )}
           </div>
         </div>
-        <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-2">
+        <div className="p-4 bg-paper/50 border-t border-ink/[0.06] flex items-center justify-end gap-2">
           {it && <button onClick={()=>onDelete(it.id)} className="mr-auto text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">🗑 Hapus</button>}
-          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50">Batal</button>
-          <button onClick={()=>form.title && onSave(form)} disabled={!form.title} className="text-sm px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50">Simpan</button>
+          <button onClick={onClose} className="text-sm px-4 py-2 rounded-lg bg-white border border-ink/10 hover:bg-paper">Batal</button>
+          <button onClick={()=>form.title && onSave(form)} disabled={!form.title} className="text-sm px-4 py-2 rounded-lg bg-ink text-white hover:bg-ink-soft disabled:opacity-50">Simpan</button>
         </div>
       </div>
     </div>
   )
 }
-function Field({ label, children }) { return <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">{label}</div>{children}</label> }
+function Field({ label, children }) { return <label className="block"><div className="text-xs font-medium text-ink-soft mb-1">{label}</div>{children}</label> }
 
 /* =========== POST LINK BADGE (opens actual social post in new tab) =========== */
 function PostLinkBadge({ platform, url }) {
@@ -1512,13 +1694,13 @@ function ContentPreview({ caption, mediaUrl, platforms }) {
   const tabs = active.length ? active : ['instagram']
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
+    <div className="rounded-lg border border-ink/10 bg-white p-3">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">👁 Preview Konten</div>
+        <div className="text-xs font-semibold text-ink-soft flex items-center gap-1.5">👁 Preview Konten</div>
         <div className="flex gap-1">
           {tabs.map(k => {
             const m = PLATFORM_META[k]
-            return <button key={k} type="button" onClick={()=>setTab(k)} className={`text-[10px] px-2 py-1 rounded-md font-medium transition ${tab===k?'bg-slate-900 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`} style={tab===k?{background:m.color}:{}}>{m.name}</button>
+            return <button key={k} type="button" onClick={()=>setTab(k)} className={`text-[10px] px-2 py-1 rounded-md font-medium transition ${tab===k?'bg-ink text-white':'bg-ink/[0.05] text-ink-soft hover:bg-ink/[0.08]'}`} style={tab===k?{background:m.color}:{}}>{m.name}</button>
           })}
         </div>
       </div>
@@ -1528,10 +1710,10 @@ function ContentPreview({ caption, mediaUrl, platforms }) {
       {tab === 'youtube' && <YTPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.youtube} />}
       {tab === 'tiktok' && <TTPreview caption={caption} mediaUrl={mediaUrl} isVideo={isVideo} meta={PLATFORM_META.tiktok} />}
 
-      <div className="mt-2 text-[10px] text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
-        <span>Karakter: <strong className={(caption||'').length > 2200 ? 'text-red-600' : 'text-slate-700'}>{(caption||'').length}</strong>/2200</span>
-        <span>Hashtag: <strong className="text-slate-700">{(caption?.match(/#\w+/g)||[]).length}</strong></span>
-        <span>Mention: <strong className="text-slate-700">{(caption?.match(/@\w+/g)||[]).length}</strong></span>
+      <div className="mt-2 text-[10px] text-ink-muted flex flex-wrap gap-x-3 gap-y-0.5">
+        <span>Karakter: <strong className={(caption||'').length > 2200 ? 'text-red-600' : 'text-ink-soft'}>{(caption||'').length}</strong>/2200</span>
+        <span>Hashtag: <strong className="text-ink-soft">{(caption?.match(/#\w+/g)||[]).length}</strong></span>
+        <span>Mention: <strong className="text-ink-soft">{(caption?.match(/@\w+/g)||[]).length}</strong></span>
       </div>
     </div>
   )
@@ -1540,13 +1722,13 @@ function ContentPreview({ caption, mediaUrl, platforms }) {
 function MediaBox({ mediaUrl, isVideo, aspect='square' }) {
   const aspectClass = aspect === 'square' ? 'aspect-square' : aspect === 'wide' ? 'aspect-video' : 'aspect-[9/16]'
   return (
-    <div className={`w-full ${aspectClass} bg-slate-100 rounded overflow-hidden flex items-center justify-center relative`}>
+    <div className={`w-full ${aspectClass} bg-ink/[0.05] rounded overflow-hidden flex items-center justify-center relative`}>
       {mediaUrl ? (
         isVideo
           ? <video src={mediaUrl} controls className="w-full h-full object-cover" onError={(e)=>{e.target.style.display='none'}} />
-          : <img src={mediaUrl} alt="preview" className="w-full h-full object-cover" onError={(e)=>{e.target.style.display='none'; e.target.parentElement.innerHTML='<div class="text-slate-400 text-xs text-center px-4">🖼️ Gambar tidak dapat dimuat.<br/>Pastikan URL HTTPS publik yang valid.</div>'}} />
+          : <img src={mediaUrl} alt="preview" className="w-full h-full object-cover" onError={(e)=>{e.target.style.display='none'; e.target.parentElement.innerHTML='<div class="text-ink-muted/70 text-xs text-center px-4">🖼️ Gambar tidak dapat dimuat.<br/>Pastikan URL HTTPS publik yang valid.</div>'}} />
       ) : (
-        <div className="text-slate-400 text-xs text-center px-4">📷 Tambahkan URL media untuk preview<br/><span className="text-[10px]">Tanpa media = post teks saja</span></div>
+        <div className="text-ink-muted/70 text-xs text-center px-4">📷 Tambahkan URL media untuk preview<br/><span className="text-[10px]">Tanpa media = post teks saja</span></div>
       )}
     </div>
   )
@@ -1554,17 +1736,17 @@ function MediaBox({ mediaUrl, isVideo, aspect='square' }) {
 
 function IGPreview({ caption, mediaUrl, isVideo, meta }) {
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-sm">
-      <div className="flex items-center gap-2 p-2 border-b border-slate-100">
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-600 p-0.5"><div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[9px] font-bold text-slate-700">{meta.avatar}</div></div>
-        <div className="flex-1"><div className="font-semibold text-slate-900 text-xs">{meta.handle.replace('@','')}</div><div className="text-[9px] text-slate-500">Jakarta, Indonesia · Sponsored</div></div>
-        <div className="text-slate-500">···</div>
+    <div className="border border-ink/10 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-sm">
+      <div className="flex items-center gap-2 p-2 border-b border-ink/[0.06]">
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-600 p-0.5"><div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[9px] font-bold text-ink-soft">{meta.avatar}</div></div>
+        <div className="flex-1"><div className="font-semibold text-ink text-xs">{meta.handle.replace('@','')}</div><div className="text-[9px] text-ink-muted">Jakarta, Indonesia · Sponsored</div></div>
+        <div className="text-ink-muted">···</div>
       </div>
       <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="square" />
       <div className="p-2 space-y-1">
-        <div className="flex gap-3 text-slate-700 text-base">♡ ⊙ ✈ <span className="ml-auto">☰</span></div>
-        <div className="text-[10px] text-slate-500">Disukai <strong className="text-slate-900">{Math.floor(Math.random()*500+120)}</strong> orang</div>
-        <div className="text-[11px] text-slate-800 leading-snug"><strong>{meta.handle.replace('@','')}</strong> <FormattedCaption text={caption} max={220} /></div>
+        <div className="flex gap-3 text-ink-soft text-base">♡ ⊙ ✈ <span className="ml-auto">☰</span></div>
+        <div className="text-[10px] text-ink-muted">Disukai <strong className="text-ink">{Math.floor(Math.random()*500+120)}</strong> orang</div>
+        <div className="text-[11px] text-ink leading-snug"><strong>{meta.handle.replace('@','')}</strong> <FormattedCaption text={caption} max={220} /></div>
       </div>
     </div>
   )
@@ -1572,15 +1754,15 @@ function IGPreview({ caption, mediaUrl, isVideo, meta }) {
 
 function FBPreview({ caption, mediaUrl, isVideo, meta }) {
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
+    <div className="border border-ink/10 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
       <div className="flex items-center gap-2 p-2.5">
         <div className="w-9 h-9 rounded-full bg-[#1877F2] flex items-center justify-center text-white text-[10px] font-bold">{meta.avatar}</div>
-        <div className="flex-1"><div className="font-semibold text-slate-900 text-[13px] leading-tight">{meta.handle}</div><div className="text-[10px] text-slate-500 flex items-center gap-1">Barusan · 🌍</div></div>
-        <div className="text-slate-500 text-lg">···</div>
+        <div className="flex-1"><div className="font-semibold text-ink text-[13px] leading-tight">{meta.handle}</div><div className="text-[10px] text-ink-muted flex items-center gap-1">Barusan · 🌍</div></div>
+        <div className="text-ink-muted text-lg">···</div>
       </div>
-      <div className="px-2.5 pb-2 text-[12px] text-slate-800 leading-snug whitespace-pre-wrap"><FormattedCaption text={caption} max={400} /></div>
+      <div className="px-2.5 pb-2 text-[12px] text-ink leading-snug whitespace-pre-wrap"><FormattedCaption text={caption} max={400} /></div>
       {mediaUrl && <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="wide" />}
-      <div className="flex items-center justify-around border-t border-slate-100 py-1.5 text-[11px] text-slate-600 font-medium">
+      <div className="flex items-center justify-around border-t border-ink/[0.06] py-1.5 text-[11px] text-ink-soft font-medium">
         <span>👍 Suka</span><span>💬 Komentar</span><span>↗ Bagikan</span>
       </div>
     </div>
@@ -1591,16 +1773,16 @@ function YTPreview({ caption, mediaUrl, isVideo, meta }) {
   const title = (caption||'').split('\n')[0] || 'Judul Video'
   const description = (caption||'').split('\n').slice(1).join('\n')
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
+    <div className="border border-ink/10 rounded-lg overflow-hidden bg-white text-xs mx-auto max-w-md">
       <MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="wide" />
       <div className="p-2.5">
-        <div className="font-semibold text-slate-900 text-[13px] leading-tight line-clamp-2">{title}</div>
+        <div className="font-semibold text-ink text-[13px] leading-tight line-clamp-2">{title}</div>
         <div className="flex items-center gap-2 mt-2">
           <div className="w-8 h-8 rounded-full bg-[#FF0000] flex items-center justify-center text-white text-[10px] font-bold">{meta.avatar}</div>
-          <div className="flex-1 min-w-0"><div className="text-[11px] font-medium text-slate-800">{meta.handle}</div><div className="text-[10px] text-slate-500">120 sub · Baru saja</div></div>
+          <div className="flex-1 min-w-0"><div className="text-[11px] font-medium text-ink">{meta.handle}</div><div className="text-[10px] text-ink-muted">120 sub · Baru saja</div></div>
           <button className="text-[10px] px-3 py-1 rounded-full bg-red-600 text-white font-semibold">Subscribe</button>
         </div>
-        {description && <div className="mt-2 text-[10px] text-slate-600 leading-snug line-clamp-3 whitespace-pre-wrap"><FormattedCaption text={description} max={200} /></div>}
+        {description && <div className="mt-2 text-[10px] text-ink-soft leading-snug line-clamp-3 whitespace-pre-wrap"><FormattedCaption text={description} max={200} /></div>}
       </div>
     </div>
   )
@@ -1608,7 +1790,7 @@ function YTPreview({ caption, mediaUrl, isVideo, meta }) {
 
 function TTPreview({ caption, mediaUrl, isVideo, meta }) {
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-black text-white text-xs mx-auto max-w-[240px] relative" style={{ aspectRatio:'9/16' }}>
+    <div className="border border-ink/10 rounded-lg overflow-hidden bg-black text-white text-xs mx-auto max-w-[240px] relative" style={{ aspectRatio:'9/16' }}>
       <div className="absolute inset-0"><MediaBox mediaUrl={mediaUrl} isVideo={isVideo} aspect="tall" /></div>
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70"></div>
       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 text-white z-10">
@@ -1626,12 +1808,12 @@ function TTPreview({ caption, mediaUrl, isVideo, meta }) {
 }
 
 function FormattedCaption({ text, max=200, light=false }) {
-  if (!text) return <span className={light?'opacity-70':'text-slate-400 italic'}>Belum ada caption…</span>
+  if (!text) return <span className={light?'opacity-70':'text-ink-muted/70 italic'}>Belum ada caption…</span>
   const truncated = text.length > max ? text.slice(0, max) + '…' : text
   const parts = truncated.split(/(#\w+|@\w+|https?:\/\/\S+)/g)
   return <>{parts.map((p,i)=> {
-    if (p.startsWith('#') || p.startsWith('@')) return <span key={i} className={light?'text-blue-200':'text-blue-600'}>{p}</span>
-    if (p.startsWith('http')) return <span key={i} className={light?'text-blue-200 underline':'text-blue-600 underline'}>{p}</span>
+    if (p.startsWith('#') || p.startsWith('@')) return <span key={i} className={light?'text-blue-200':'text-signal'}>{p}</span>
+    if (p.startsWith('http')) return <span key={i} className={light?'text-blue-200 underline':'text-signal underline'}>{p}</span>
     return <span key={i}>{p}</span>
   })}</>
 }
@@ -1670,16 +1852,16 @@ export function ComparePeriodView({ days }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl bg-slate-900 text-white p-5 flex items-center justify-between gap-4 flex-wrap">
+      <div className="rounded-2xl bg-ink text-white p-5 flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <div className="text-[10px] uppercase tracking-widest text-blue-200/80 font-semibold">Compare Periode · Side-by-Side</div>
+          <div className="text-[10px] text-blue-200/80 font-semibold">Compare Periode · Side-by-Side</div>
           <h2 className="text-lg font-bold mt-1">Periode Ini vs Periode Sebelumnya</h2>
           <p className="text-xs text-blue-100/70 mt-1">Membandingkan {days} hari terakhir dengan {days} hari sebelumnya</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="text-right"><div className="text-[10px] text-blue-200/70 uppercase">Periode Sebelumnya</div><div className="text-sm font-mono">{new Date(Date.now()-days*2*86400000).toISOString().slice(0,10)} → {new Date(Date.now()-(days+1)*86400000).toISOString().slice(0,10)}</div></div>
+          <div className="text-right"><div className="text-[10px] text-blue-200/70">Periode Sebelumnya</div><div className="text-sm font-mono">{new Date(Date.now()-days*2*86400000).toISOString().slice(0,10)} → {new Date(Date.now()-(days+1)*86400000).toISOString().slice(0,10)}</div></div>
           <ChevronRight className="w-5 h-5 text-blue-300" />
-          <div><div className="text-[10px] text-blue-200/70 uppercase">Periode Ini</div><div className="text-sm font-mono">{new Date(Date.now()-days*86400000).toISOString().slice(0,10)} → {new Date().toISOString().slice(0,10)}</div></div>
+          <div><div className="text-[10px] text-blue-200/70">Periode Ini</div><div className="text-sm font-mono">{new Date(Date.now()-days*86400000).toISOString().slice(0,10)} → {new Date().toISOString().slice(0,10)}</div></div>
         </div>
       </div>
 
@@ -1689,16 +1871,16 @@ export function ComparePeriodView({ days }) {
           const delta = pctChange(k.curr, k.prev)
           const up = delta >= 0
           return (
-            <div key={k.label} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-slate-100"><div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{k.label}</div></div>
+            <div key={k.label} className="bg-white rounded-xl border border-ink/[0.08] overflow-hidden">
+              <div className="p-4 border-b border-ink/[0.06]"><div className="text-[11px] text-ink-muted font-semibold">{k.label}</div></div>
               <div className="grid grid-cols-2 divide-x divide-slate-100">
-                <div className="p-4 bg-slate-50/50">
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Sebelumnya</div>
-                  <div className="text-xl font-bold text-slate-500 mt-1">{k.isPct ? k.prev+'%' : formatNumber(k.prev)}</div>
+                <div className="p-4 bg-paper/50">
+                  <div className="text-[10px] text-ink-muted font-semibold">Sebelumnya</div>
+                  <div className="text-xl font-bold text-ink-muted mt-1">{k.isPct ? k.prev+'%' : formatNumber(k.prev)}</div>
                 </div>
                 <div className="p-4">
-                  <div className="text-[10px] text-blue-600 uppercase font-semibold">Sekarang</div>
-                  <div className="text-xl font-bold text-slate-900 mt-1">{k.isPct ? k.curr+'%' : formatNumber(k.curr)}</div>
+                  <div className="text-[10px] text-signal font-semibold">Sekarang</div>
+                  <div className="text-xl font-bold text-ink mt-1">{k.isPct ? k.curr+'%' : formatNumber(k.curr)}</div>
                 </div>
               </div>
               <div className={`px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 ${up ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
@@ -1715,12 +1897,12 @@ export function ComparePeriodView({ days }) {
         <Card title="Tren Reach: Periode Ini vs Sebelumnya" desc="Dibandingkan berdasarkan hari relatif ke-N">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={combined}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-              <XAxis dataKey="day" tick={{ fontSize:11, fill:'#64748B' }} label={{ value:'Hari ke-', position:'insideBottom', fontSize:10, fill:'#94a3b8', offset:-2 }} />
-              <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} />
+              <CartesianGrid stroke="#E6EAF2" vertical={false} />
+              <XAxis axisLine={false} tickLine={false} dataKey="day" tick={{ fontSize:11, fill:'#5B6785' }} label={{ value:'Hari ke-', position:'insideBottom', fontSize:10, fill:'#94a3b8', offset:-2 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} />
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize:12 }} />
-              <Line type="monotone" name="Periode Ini" dataKey="curReach" stroke="#1D4ED8" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" name="Periode Ini" dataKey="curReach" stroke="#2350E6" strokeWidth={2.5} dot={false} />
               <Line type="monotone" name="Periode Sebelumnya" dataKey="prevReach" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 4" dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -1728,12 +1910,12 @@ export function ComparePeriodView({ days }) {
         <Card title="Tren Engagement: Periode Ini vs Sebelumnya" desc="Dibandingkan berdasarkan hari relatif ke-N">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={combined}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#EEF2F7" vertical={false} />
-              <XAxis dataKey="day" tick={{ fontSize:11, fill:'#64748B' }} />
-              <YAxis tick={{ fontSize:11, fill:'#64748B' }} tickFormatter={formatNumber} />
+              <CartesianGrid stroke="#E6EAF2" vertical={false} />
+              <XAxis axisLine={false} tickLine={false} dataKey="day" tick={{ fontSize:11, fill:'#5B6785' }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} />
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize:12 }} />
-              <Line type="monotone" name="Periode Ini" dataKey="curEng" stroke="#10B981" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" name="Periode Ini" dataKey="curEng" stroke="#0E9F8E" strokeWidth={2.5} dot={false} />
               <Line type="monotone" name="Periode Sebelumnya" dataKey="prevEng" stroke="#94a3b8" strokeWidth={2} strokeDasharray="4 4" dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -1744,19 +1926,19 @@ export function ComparePeriodView({ days }) {
       <Card title="Perbandingan Platform" desc="Metrik utama tiap platform pada dua periode" className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
-              <tr><th rowSpan={2} className="text-left px-4 py-2 font-semibold border-r border-slate-100">Platform</th>
-                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-slate-100">Reach</th>
-                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-slate-100">Engagement</th>
+            <thead className="bg-paper text-[11px] text-ink-muted">
+              <tr><th rowSpan={2} className="text-left px-4 py-2 font-semibold border-r border-ink/[0.06]">Platform</th>
+                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-ink/[0.06]">Reach</th>
+                <th colSpan={3} className="text-center px-4 py-2 font-semibold border-r border-ink/[0.06]">Engagement</th>
                 <th colSpan={3} className="text-center px-4 py-2 font-semibold">Eng. Rate</th></tr>
-              <tr className="text-[10px]"><th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500 border-r border-slate-100">Δ</th>
-                <th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500 border-r border-slate-100">Δ</th>
-                <th className="px-3 py-1 font-medium text-slate-400">Sebelumnya</th><th className="px-3 py-1 font-medium text-slate-600">Sekarang</th><th className="px-3 py-1 font-medium text-slate-500">Δ</th></tr>
+              <tr className="text-[10px]"><th className="px-3 py-1 font-medium text-ink-muted/70">Sebelumnya</th><th className="px-3 py-1 font-medium text-ink-soft">Sekarang</th><th className="px-3 py-1 font-medium text-ink-muted border-r border-ink/[0.06]">Δ</th>
+                <th className="px-3 py-1 font-medium text-ink-muted/70">Sebelumnya</th><th className="px-3 py-1 font-medium text-ink-soft">Sekarang</th><th className="px-3 py-1 font-medium text-ink-muted border-r border-ink/[0.06]">Δ</th>
+                <th className="px-3 py-1 font-medium text-ink-muted/70">Sebelumnya</th><th className="px-3 py-1 font-medium text-ink-soft">Sekarang</th><th className="px-3 py-1 font-medium text-ink-muted">Δ</th></tr>
             </thead>
             <tbody>
               {platforms.map(p => { const c = perPlatformCurr[p.key], pr = perPlatformPrev[p.key]; return (
-                <tr key={p.key} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="px-4 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background:p.color }} /><span className="font-medium text-slate-900">{p.name}</span></div></td>
+                <tr key={p.key} className="border-t border-ink/[0.06] hover:bg-paper">
+                  <td className="px-4 py-3 border-r border-ink/[0.06]"><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background:p.color }} /><span className="font-medium text-ink">{p.name}</span></div></td>
                   <CompareCell prev={pr.reach} curr={c.reach} />
                   <CompareCell prev={pr.engagement} curr={c.engagement} />
                   <CompareCell prev={pr.engagementRate} curr={c.engagementRate} pct isLast />
@@ -1773,9 +1955,9 @@ export function ComparePeriodView({ days }) {
 function CompareCell({ prev, curr, pct = false, isLast = false }) {
   const delta = pctChange(curr, prev); const up = delta >= 0
   return (<>
-    <td className="px-3 py-3 text-slate-500">{pct ? prev+'%' : formatNumber(prev)}</td>
-    <td className="px-3 py-3 font-semibold text-slate-900">{pct ? curr+'%' : formatNumber(curr)}</td>
-    <td className={`px-3 py-3 font-medium ${!isLast?'border-r border-slate-100':''} ${up?'text-emerald-600':'text-red-500'}`}>{up?'▲ +':'▼ '}{delta}%</td>
+    <td className="px-3 py-3 text-ink-muted">{pct ? prev+'%' : formatNumber(prev)}</td>
+    <td className="px-3 py-3 font-semibold text-ink">{pct ? curr+'%' : formatNumber(curr)}</td>
+    <td className={`px-3 py-3 font-medium ${!isLast?'border-r border-ink/[0.06]':''} ${up?'text-emerald-600':'text-red-500'}`}>{up?'▲ +':'▼ '}{delta}%</td>
   </>)
 }
 
@@ -1805,7 +1987,7 @@ function UsersRolesTab({ roles }) {
     setError('')
     if (!form.name || !form.email || !form.role) { setError('Nama, email, dan peran wajib diisi'); return }
     if (!editing && !form.password) { setError('Kata sandi wajib diisi'); return }
-    if (form.password && form.password.length < 6) { setError('Kata sandi minimal 6 karakter'); return }
+    if (form.password && form.password.length < 8) { setError('Kata sandi minimal 8 karakter'); return }
     try {
       const payload = { ...form, role: isAgency ? form.role : 'Admin' }
       const r = await apiFetch('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
@@ -1867,44 +2049,44 @@ function UsersRolesTab({ roles }) {
       <Card title={editing ? 'Perbarui Pengguna' : 'Tambah Pengguna Baru'} desc="Isi email dan pilih peran — pengguna langsung dapat masuk ke dashboard">
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-600">Nama Lengkap</label>
-            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="cth: Siti Nurhaliza" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            <label className="text-xs font-medium text-ink-soft">Nama Lengkap</label>
+            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="cth: Siti Nurhaliza" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Email</label>
-            <input type="email" value={form.email} disabled={editing} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="nama@email.com" className={`mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${editing?'bg-slate-100 text-slate-500':''}`} />
-            {editing && <div className="text-[10px] text-slate-400 mt-1">Email tidak dapat diubah saat mengedit</div>}
+            <label className="text-xs font-medium text-ink-soft">Email</label>
+            <input type="email" value={form.email} disabled={editing} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="nama@email.com" className={`mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${editing?'bg-ink/[0.05] text-ink-muted':''}`} />
+            {editing && <div className="text-[10px] text-ink-muted/70 mt-1">Email tidak dapat diubah saat mengedit</div>}
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Kata Sandi {editing && <span className="text-slate-400">(isi jika ingin reset)</span>}</label>
-            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 6 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            <label className="text-xs font-medium text-ink-soft">Kata Sandi {editing && <span className="text-ink-muted/70">(isi jika ingin reset)</span>}</label>
+            <input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Minimal 8 karakter" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Paket Workspace</label>
-            <div className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 text-slate-500 capitalize">
-              {workspacePlan} <span className="text-[10px] text-slate-400 normal-case">(mengikuti paket akun Anda, bukan per-pengguna)</span>
+            <label className="text-xs font-medium text-ink-soft">Paket Workspace</label>
+            <div className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-paper text-ink-muted capitalize">
+              {workspacePlan} <span className="text-[10px] text-ink-muted/70 normal-case">(mengikuti paket akun Anda, bukan per-pengguna)</span>
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600">Peran</label>
+            <label className="text-xs font-medium text-ink-soft">Peran</label>
             {isAgency ? (
-              <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))} className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
                 {['Admin','Analyst','Executive','Viewer'].map(r=><option key={r} value={r}>{r}</option>)}
               </select>
             ) : (
-              <div className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm bg-slate-50 text-slate-500">
-                Admin <span className="text-[10px] text-slate-400">(upgrade ke Agency untuk peran lain)</span>
+              <div className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm bg-paper text-ink-muted">
+                Admin <span className="text-[10px] text-ink-muted/70">(upgrade ke Agency untuk peran lain)</span>
               </div>
             )}
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs font-medium text-slate-600">Jabatan (opsional)</label>
-            <input value={form.jabatan} onChange={e=>setForm(f=>({...f,jabatan:e.target.value}))} placeholder="cth: Analis Data Junior" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+            <label className="text-xs font-medium text-ink-soft">Jabatan (opsional)</label>
+            <input value={form.jabatan} onChange={e=>setForm(f=>({...f,jabatan:e.target.value}))} placeholder="cth: Analis Data Junior" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
           </div>
           {error && <div className="md:col-span-2 text-xs px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">{error}</div>}
           <div className="md:col-span-2 flex items-center gap-2 pt-1">
-            <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
-            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Admin', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50">Batal</button>}
+            <button type="submit" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-white text-sm font-medium hover:bg-ink-soft">{editing ? '💾 Perbarui' : '➕ Tambah Pengguna'}</button>
+            {editing && <button type="button" onClick={()=>{ setEditing(false); setForm({ name:'', email:'', password:'', role:'Admin', jabatan:'' }); setError('') }} className="text-sm px-4 py-2 rounded-lg border border-ink/10 hover:bg-paper">Batal</button>}
             {flash && <span className={`ml-auto text-xs px-3 py-1.5 rounded-lg ${flash.ok?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-red-50 text-red-700 border border-red-200'}`}>{flash.msg}</span>}
           </div>
         </form>
@@ -1914,27 +2096,27 @@ function UsersRolesTab({ roles }) {
       <Card title={`Daftar Pengguna (${allUsers.length})`} desc="Semua pengguna yang dapat login ke dashboard" className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+            <thead className="bg-paper text-[11px] text-ink-muted">
               <tr>{['Pengguna','Email','Peran','Paket','Jabatan','Status','Aksi'].map(h => <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody>
               {allUsers.map(u => (
-                <tr key={u.email} className={`border-t border-slate-100 hover:bg-slate-50/60 ${u.active===false?'opacity-60':''}`}>
+                <tr key={u.email} className={`border-t border-ink/[0.06] hover:bg-paper ${u.active===false?'opacity-60':''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.initial || (u.name||'').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()}</div>
                       <div>
-                        <div className="font-medium text-slate-900 flex items-center gap-1.5">{u.name} {u.seeded && <span className="text-[9px] px-1 py-0.5 rounded font-semibold bg-slate-100 text-slate-500">Bawaan</span>}</div>
+                        <div className="font-medium text-ink flex items-center gap-1.5">{u.name} {u.seeded && <span className="text-[9px] px-1 py-0.5 rounded font-semibold bg-ink/[0.05] text-ink-muted">Bawaan</span>}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{u.email}</td>
+                  <td className="px-4 py-3 text-xs text-ink-muted font-mono">{u.email}</td>
                   <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold text-white" style={{ background: ROLE_COLORS[u.role]||'#64748B' }}>{u.role}</span></td>
-                  <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-700 capitalize">{u.plan || 'starter'}</span></td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{u.jabatan || '—'}</td>
+                  <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-ink/[0.05] text-ink-soft capitalize">{u.plan || 'starter'}</span></td>
+                  <td className="px-4 py-3 text-xs text-ink-soft">{u.jabatan || '—'}</td>
                   <td className="px-4 py-3">
                     <button onClick={()=>toggleActive(u.email, u.active !== false)}
-                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition ring-1 ${u.active !== false ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-500 ring-slate-200 hover:bg-slate-200'}`}>
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold transition ring-1 ${u.active !== false ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-ink/[0.05] text-ink-muted ring-ink/10 hover:bg-ink/[0.08]'}`}>
                       <span className={`relative inline-block w-8 h-4 rounded-full transition ${u.active !== false ? 'bg-emerald-500' : 'bg-slate-400'}`}>
                         <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${u.active !== false ? 'translate-x-4' : ''}`} />
                       </span>
@@ -1943,13 +2125,13 @@ function UsersRolesTab({ roles }) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={()=>editUser(u)} className="text-xs px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700">✎ Edit</button>
+                      <button onClick={()=>editUser(u)} className="text-xs px-2.5 py-1 rounded-md bg-ink/[0.05] hover:bg-ink/[0.08] text-ink-soft">✎ Edit</button>
                       <button onClick={()=>del(u.email)} className="text-xs px-2.5 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700">🗑 Hapus</button>
                     </div>
                   </td>
                 </tr>
               ))}
-              {loading && <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>}
+              {loading && <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-muted/70 text-xs">Memuat…</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1977,8 +2159,8 @@ function ActivityLogsTab() {
       if (filterAction) qs.set('action', filterAction)
       if (filterActor) qs.set('actor', filterActor.toLowerCase())
       const [lr, sr] = await Promise.all([
-        fetch(`/api/activity-logs?${qs.toString()}`).then(r=>r.json()),
-        fetch('/api/activity-summary').then(r=>r.json()),
+        apiFetch(`/api/activity-logs?${qs.toString()}`).then(r=>r.json()),
+        apiFetch('/api/activity-summary').then(r=>r.json()),
       ])
       setLogs(lr.logs || [])
       setSummary(sr)
@@ -1988,13 +2170,13 @@ function ActivityLogsTab() {
   useEffect(() => { load() }, [days, filterAction, filterActor])
 
   const ACTION_LABELS = {
-    'auth.login': { l:'Login', color:'bg-blue-50 text-blue-700 ring-blue-200', icon:'🔐' },
+    'auth.login': { l:'Login', color:'bg-signal-soft text-signal ring-blue-200', icon:'🔐' },
     'user.upsert': { l:'Tambah/Ubah User', color:'bg-emerald-50 text-emerald-700 ring-emerald-200', icon:'👤' },
     'user.delete': { l:'Hapus User', color:'bg-red-50 text-red-700 ring-red-200', icon:'🗑' },
     'ayrshare.link': { l:'Link Ayrshare', color:'bg-indigo-50 text-indigo-700 ring-indigo-200', icon:'🔗' },
     'ayrshare.publish': { l:'Publish Ayrshare', color:'bg-purple-50 text-purple-700 ring-purple-200', icon:'🚀' },
     'ayrshare.schedule': { l:'Jadwalkan Ayrshare', color:'bg-amber-50 text-amber-700 ring-amber-200', icon:'📅' },
-    'impact-stats.update': { l:'Update Statistik Dampak', color:'bg-slate-50 text-slate-700 ring-slate-200', icon:'📊' },
+    'impact-stats.update': { l:'Update Statistik Dampak', color:'bg-paper text-ink-soft ring-ink/10', icon:'📊' },
   }
 
   function fmtRelative(ts) {
@@ -2041,68 +2223,68 @@ function ActivityLogsTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aktivitas 24 Jam</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{summary?.total24h ?? '—'}</div>
+        <div className="bg-white rounded-xl border border-ink/10 p-4">
+          <div className="text-[10px] text-ink-muted font-semibold">Aktivitas 24 Jam</div>
+          <div className="text-2xl font-bold text-ink mt-1">{summary?.total24h ?? '—'}</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aktivitas 7 Hari</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">{summary?.total7d ?? '—'}</div>
+        <div className="bg-white rounded-xl border border-ink/10 p-4">
+          <div className="text-[10px] text-ink-muted font-semibold">Aktivitas 7 Hari</div>
+          <div className="text-2xl font-bold text-ink mt-1">{summary?.total7d ?? '—'}</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Login Gagal 24 Jam</div>
-          <div className={`text-2xl font-bold mt-1 ${summary?.loginFails24h > 0 ? 'text-red-600' : 'text-slate-900'}`}>{summary?.loginFails24h ?? '—'}</div>
+        <div className="bg-white rounded-xl border border-ink/10 p-4">
+          <div className="text-[10px] text-ink-muted font-semibold">Login Gagal 24 Jam</div>
+          <div className={`text-2xl font-bold mt-1 ${summary?.loginFails24h > 0 ? 'text-red-600' : 'text-ink'}`}>{summary?.loginFails24h ?? '—'}</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Aksi Terbanyak</div>
-          <div className="text-sm font-semibold text-slate-900 mt-1 truncate">{summary?.byAction?.[0]?.action || '—'} <span className="text-xs text-slate-500 font-normal">×{summary?.byAction?.[0]?.count || 0}</span></div>
+        <div className="bg-white rounded-xl border border-ink/10 p-4">
+          <div className="text-[10px] text-ink-muted font-semibold">Aksi Terbanyak</div>
+          <div className="text-sm font-semibold text-ink mt-1 truncate">{summary?.byAction?.[0]?.action || '—'} <span className="text-xs text-ink-muted font-normal">×{summary?.byAction?.[0]?.count || 0}</span></div>
         </div>
       </div>
 
       <Card title="Log Aktivitas Pengguna" desc="Riwayat semua tindakan penting untuk audit trail">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <Select label="Periode" value={String(days)} onChange={v=>setDays(+v)} options={[{v:'1',l:'24 Jam'},{v:'7',l:'7 Hari'},{v:'30',l:'30 Hari'},{v:'0',l:'Semua'}]} />
-          <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">Filter Aksi</div>
-            <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white min-w-[200px]">
+          <label className="block"><div className="text-xs font-medium text-ink-soft mb-1">Filter Aksi</div>
+            <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} className="px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white min-w-[200px]">
               <option value="">Semua Aksi</option>
               {Object.entries(ACTION_LABELS).map(([k,v])=><option key={k} value={k}>{v.icon} {v.l}</option>)}
             </select>
           </label>
-          <label className="block"><div className="text-xs font-medium text-slate-600 mb-1">Filter Aktor (email)</div>
-            <input value={filterActor} onChange={e=>setFilterActor(e.target.value)} placeholder="cth: annisa.permatasari@…" className="px-3 py-2 rounded-lg border border-slate-200 text-sm min-w-[260px]" />
+          <label className="block"><div className="text-xs font-medium text-ink-soft mb-1">Filter Aktor (email)</div>
+            <input value={filterActor} onChange={e=>setFilterActor(e.target.value)} placeholder="cth: annisa.permatasari@…" className="px-3 py-2 rounded-lg border border-ink/10 text-sm min-w-[260px]" />
           </label>
           <button onClick={()=>exportCSV(logs)} disabled={!logs.length} className="ml-auto text-xs px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 font-medium">📥 Ekspor CSV</button>
-          <button onClick={load} className="text-xs px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">🔄 Refresh</button>
+          <button onClick={load} className="text-xs px-3 py-2 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08]">🔄 Refresh</button>
         </div>
 
         <div className="overflow-x-auto -mx-2">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/70 text-[11px] uppercase text-slate-500 tracking-wider">
+            <thead className="bg-paper text-[11px] text-ink-muted">
               <tr>{['Waktu','Aksi','Aktor','Target','Status','Detail','IP'].map(h=><th key={h} className="text-left px-3 py-2.5 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500 text-xs">Memuat…</td></tr>}
-              {!loading && logs.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500 text-xs italic">Belum ada aktivitas tercatat pada periode ini.</td></tr>}
+              {loading && <tr><td colSpan={7} className="px-3 py-8 text-center text-ink-muted text-xs">Memuat…</td></tr>}
+              {!loading && logs.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-ink-muted text-xs italic">Belum ada aktivitas tercatat pada periode ini.</td></tr>}
               {logs.map(l => {
-                const meta = ACTION_LABELS[l.action] || { l:l.action, color:'bg-slate-50 text-slate-700 ring-slate-200', icon:'•' }
+                const meta = ACTION_LABELS[l.action] || { l:l.action, color:'bg-paper text-ink-soft ring-ink/10', icon:'•' }
                 return (
-                  <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50/60">
-                    <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">
-                      <div className="font-medium text-slate-800">{fmtRelative(l.ts)}</div>
-                      <div className="text-[10px] text-slate-500">{new Date(l.ts).toLocaleString('id-ID')}</div>
+                  <tr key={l.id} className="border-t border-ink/[0.06] hover:bg-paper">
+                    <td className="px-3 py-2 text-xs text-ink-soft whitespace-nowrap">
+                      <div className="font-medium text-ink">{fmtRelative(l.ts)}</div>
+                      <div className="text-[10px] text-ink-muted">{new Date(l.ts).toLocaleString('id-ID')}</div>
                     </td>
                     <td className="px-3 py-2"><span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded ring-1 ${meta.color}`}>{meta.icon} {meta.l}</span></td>
-                    <td className="px-3 py-2 text-xs font-mono text-slate-700 max-w-[220px] truncate" title={l.actor}>{l.actor}</td>
-                    <td className="px-3 py-2 text-xs text-slate-600 font-mono max-w-[220px] truncate" title={l.target || '—'}>{l.target || '—'}</td>
+                    <td className="px-3 py-2 text-xs font-mono text-ink-soft max-w-[220px] truncate" title={l.actor}>{l.actor}</td>
+                    <td className="px-3 py-2 text-xs text-ink-soft font-mono max-w-[220px] truncate" title={l.target || '—'}>{l.target || '—'}</td>
                     <td className="px-3 py-2">
                       {l.status === 'success' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">✓ Sukses</span>}
                       {l.status === 'failure' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 ring-1 ring-red-200">✗ Gagal</span>}
-                      {l.status === 'info' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-700 ring-1 ring-slate-200">ℹ Info</span>}
+                      {l.status === 'info' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-paper text-ink-soft ring-1 ring-ink/10">ℹ Info</span>}
                     </td>
-                    <td className="px-3 py-2 text-[11px] text-slate-500 max-w-[280px]">
-                      {l.meta ? Object.entries(l.meta).slice(0,3).map(([k,v]) => <div key={k} className="truncate"><span className="text-slate-400">{k}:</span> {typeof v === 'object' ? JSON.stringify(v).slice(0,60) : String(v).slice(0,80)}</div>) : '—'}
+                    <td className="px-3 py-2 text-[11px] text-ink-muted max-w-[280px]">
+                      {l.meta ? Object.entries(l.meta).slice(0,3).map(([k,v]) => <div key={k} className="truncate"><span className="text-ink-muted/70">{k}:</span> {typeof v === 'object' ? JSON.stringify(v).slice(0,60) : String(v).slice(0,80)}</div>) : '—'}
                     </td>
-                    <td className="px-3 py-2 text-[10px] font-mono text-slate-500">{l.ip || '—'}</td>
+                    <td className="px-3 py-2 text-[10px] font-mono text-ink-muted">{l.ip || '—'}</td>
                   </tr>
                 )
               })}
@@ -2128,7 +2310,7 @@ function WeeklyDigestTab() {
 
   const load = async () => {
     try {
-      const s = await fetch('/api/digest/weekly/status').then(r=>r.json())
+      const s = await apiFetch('/api/digest/weekly/status').then(r=>r.json())
       setState(s)
       setCustomEmails((s.custom_recipients||[]).join('\n'))
     } catch {}
@@ -2138,7 +2320,7 @@ function WeeklyDigestTab() {
   async function doPreview() {
     setBusy('preview'); setFlash(null)
     try {
-      const r = await fetch('/api/digest/weekly/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(r=>r.json())
       setPreview(r); setShowPreview(true)
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
     setBusy(null)
@@ -2147,7 +2329,7 @@ function WeeklyDigestTab() {
     if (!confirm('Kirim ringkasan mingguan sekarang ke semua penerima?')) return
     setBusy('send'); setFlash(null)
     try {
-      const r = await fetch('/api/digest/weekly/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(r=>r.json())
       setFlash({ ok: r.ok, message: r.ok ? `Berhasil dikirim ke ${r.results?.filter(x=>x.ok).length}/${r.recipients?.length} penerima` : (r.error || 'Gagal') })
       await load()
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
@@ -2162,14 +2344,14 @@ function WeeklyDigestTab() {
         recipients_mode: state.recipients_mode,
         custom_recipients: customEmails.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean),
       }
-      const r = await fetch('/api/digest/weekly/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) }).then(r=>r.json())
+      const r = await apiFetch('/api/digest/weekly/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) }).then(r=>r.json())
       if (r.ok) { setFlash({ ok:true, message:'Pengaturan tersimpan' }); await load() }
       else setFlash({ ok:false, message: r.error || 'Gagal simpan' })
     } catch (e) { setFlash({ ok:false, message: String(e?.message||e) }) }
     setBusy(null)
   }
 
-  if (!state) return <div className="text-sm text-slate-500">Memuat…</div>
+  if (!state) return <div className="text-sm text-ink-muted">Memuat…</div>
 
   return (
     <div className="space-y-4">
@@ -2178,55 +2360,55 @@ function WeeklyDigestTab() {
           <div className="space-y-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" checked={state.enabled} onChange={e=>setState(s=>({...s, enabled:e.target.checked}))} className="w-4 h-4 rounded accent-blue-600" />
-              <span className="text-sm font-medium text-slate-800">Aktifkan pengiriman otomatis Senin pagi</span>
+              <span className="text-sm font-medium text-ink">Aktifkan pengiriman otomatis Senin pagi</span>
             </label>
             <div>
-              <div className="text-xs font-medium text-slate-600 mb-1">Jam Pengiriman (WIB)</div>
-              <select value={state.hour_wib} onChange={e=>setState(s=>({...s, hour_wib:+e.target.value}))} className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
+              <div className="text-xs font-medium text-ink-soft mb-1">Jam Pengiriman (WIB)</div>
+              <select value={state.hour_wib} onChange={e=>setState(s=>({...s, hour_wib:+e.target.value}))} className="px-3 py-2 rounded-lg border border-ink/10 text-sm bg-white">
                 {[6,7,8,9,10].map(h => <option key={h} value={h}>{String(h).padStart(2,'0')}:00 WIB</option>)}
               </select>
-              <div className="text-[11px] text-slate-500 mt-1">💡 Pengiriman otomatis berjalan setiap Senin jam ini (window ±2 jam untuk toleransi scheduler)</div>
+              <div className="text-[11px] text-ink-muted mt-1">💡 Pengiriman otomatis berjalan setiap Senin jam ini (window ±2 jam untuk toleransi scheduler)</div>
             </div>
             <div>
-              <div className="text-xs font-medium text-slate-600 mb-1">Penerima</div>
+              <div className="text-xs font-medium text-ink-soft mb-1">Penerima</div>
               <div className="flex gap-3">
                 <label className="inline-flex items-center gap-1.5 cursor-pointer">
                   <input type="radio" name="rmode" checked={state.recipients_mode==='admins'} onChange={()=>setState(s=>({...s, recipients_mode:'admins'}))} className="accent-blue-600" />
-                  <span className="text-sm text-slate-700">Semua Admin aktif</span>
+                  <span className="text-sm text-ink-soft">Semua Admin aktif</span>
                 </label>
                 <label className="inline-flex items-center gap-1.5 cursor-pointer">
                   <input type="radio" name="rmode" checked={state.recipients_mode==='custom'} onChange={()=>setState(s=>({...s, recipients_mode:'custom'}))} className="accent-blue-600" />
-                  <span className="text-sm text-slate-700">Daftar khusus</span>
+                  <span className="text-sm text-ink-soft">Daftar khusus</span>
                 </label>
               </div>
               {state.recipients_mode === 'custom' && (
-                <textarea value={customEmails} onChange={e=>setCustomEmails(e.target.value)} rows={3} placeholder="satu email per baris" className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm resize-none font-mono" />
+                <textarea value={customEmails} onChange={e=>setCustomEmails(e.target.value)} rows={3} placeholder="satu email per baris" className="mt-2 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm resize-none font-mono" />
               )}
             </div>
-            <button onClick={saveSettings} disabled={busy==='save'} className="text-sm px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 font-medium">{busy==='save'?'Menyimpan…':'💾 Simpan Pengaturan'}</button>
+            <button onClick={saveSettings} disabled={busy==='save'} className="text-sm px-4 py-2 rounded-lg bg-ink text-white hover:bg-ink-soft disabled:opacity-50 font-medium">{busy==='save'?'Menyimpan…':'💾 Simpan Pengaturan'}</button>
           </div>
 
           <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Status Pengiriman Terakhir</div>
+            <div className="bg-paper border border-ink/10 rounded-lg p-4">
+              <div className="text-[10px] text-ink-muted font-semibold mb-2">Status Pengiriman Terakhir</div>
               {state.last_sent_at ? (
                 <>
-                  <div className="text-sm font-semibold text-slate-900">{new Date(state.last_sent_at).toLocaleString('id-ID',{dateStyle:'full',timeStyle:'short'})}</div>
-                  <div className="text-xs text-slate-600 mt-1">Terkirim ke {state.last_sent_success}/{state.last_sent_total} penerima</div>
+                  <div className="text-sm font-semibold text-ink">{new Date(state.last_sent_at).toLocaleString('id-ID',{dateStyle:'full',timeStyle:'short'})}</div>
+                  <div className="text-xs text-ink-soft mt-1">Terkirim ke {state.last_sent_success}/{state.last_sent_total} penerima</div>
                   {state.last_sent_recipients?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {state.last_sent_recipients.slice(0,6).map(e => <span key={e} className="text-[10px] px-1.5 py-0.5 rounded bg-white ring-1 ring-slate-200 text-slate-700 font-mono">{e}</span>)}
-                      {state.last_sent_recipients.length > 6 && <span className="text-[10px] text-slate-500">+{state.last_sent_recipients.length-6} lainnya</span>}
+                      {state.last_sent_recipients.slice(0,6).map(e => <span key={e} className="text-[10px] px-1.5 py-0.5 rounded bg-white ring-1 ring-ink/10 text-ink-soft font-mono">{e}</span>)}
+                      {state.last_sent_recipients.length > 6 && <span className="text-[10px] text-ink-muted">+{state.last_sent_recipients.length-6} lainnya</span>}
                     </div>
                   )}
                 </>
               ) : (
-                <div className="text-sm text-slate-500 italic">Belum pernah dikirim. Klik "Kirim Sekarang" atau tunggu Senin depan.</div>
+                <div className="text-sm text-ink-muted italic">Belum pernah dikirim. Klik "Kirim Sekarang" atau tunggu Senin depan.</div>
               )}
             </div>
 
             <div className="flex flex-col gap-2">
-              <button onClick={doPreview} disabled={busy==='preview'} className="text-sm px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 disabled:opacity-50 font-medium">{busy==='preview'?'Memuat preview…':'👁 Lihat Preview Email'}</button>
+              <button onClick={doPreview} disabled={busy==='preview'} className="text-sm px-4 py-2.5 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] text-ink disabled:opacity-50 font-medium">{busy==='preview'?'Memuat preview…':'👁 Lihat Preview Email'}</button>
               <button onClick={doSend} disabled={busy==='send'} className="text-sm px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 text-white hover:opacity-90 disabled:opacity-50 font-medium">{busy==='send'?'Mengirim…':'📧 Kirim Sekarang ke Penerima'}</button>
             </div>
 
@@ -2236,20 +2418,20 @@ function WeeklyDigestTab() {
       </Card>
 
       {showPreview && preview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={()=>setShowPreview(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm p-4" onClick={()=>setShowPreview(false)}>
           <div onClick={e=>e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[92vh] flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-4 border-b border-ink/[0.06] flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-slate-900">Preview Email Ringkasan Mingguan</h3>
-                <div className="text-xs text-slate-500">{preview.subject} · akan dikirim ke <strong>{preview.recipients?.length}</strong> penerima</div>
+                <h3 className="font-semibold text-ink">Preview Email Ringkasan Mingguan</h3>
+                <div className="text-xs text-ink-muted">{preview.subject} · akan dikirim ke <strong>{preview.recipients?.length}</strong> penerima</div>
               </div>
-              <button onClick={()=>setShowPreview(false)} className="text-slate-500 hover:text-slate-800 text-2xl leading-none">×</button>
+              <button onClick={()=>setShowPreview(false)} className="text-ink-muted hover:text-ink text-2xl leading-none">×</button>
             </div>
-            <div className="flex-1 overflow-auto p-4 bg-slate-100">
+            <div className="flex-1 overflow-auto p-4 bg-ink/[0.05]">
               <iframe title="digest-preview" srcDoc={preview.html} className="w-full h-[70vh] bg-white rounded-lg shadow-inner border-0" />
             </div>
-            <div className="p-3 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button onClick={()=>setShowPreview(false)} className="text-sm px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50">Tutup</button>
+            <div className="p-3 border-t border-ink/[0.06] flex items-center justify-end gap-2">
+              <button onClick={()=>setShowPreview(false)} className="text-sm px-4 py-2 rounded-lg bg-white border border-ink/10 hover:bg-paper">Tutup</button>
             </div>
           </div>
         </div>
@@ -2267,7 +2449,7 @@ function ImpactStatsTab() {
 
   const load = async () => {
     setLoading(true)
-    try { const r = await fetch('/api/impact-stats'); const j = await r.json(); setStats(j.stats || []); setUpdatedAt(j.updated_at) } catch {}
+    try { const r = await apiFetch('/api/impact-stats'); const j = await r.json(); setStats(j.stats || []); setUpdatedAt(j.updated_at) } catch {}
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -2281,7 +2463,7 @@ function ImpactStatsTab() {
     if (stats.some(s => !s.v || !s.l)) { setError('Nilai dan label wajib diisi untuk semua statistik'); return }
     setLoading(true)
     try {
-      const r = await fetch('/api/impact-stats', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stats }) })
+      const r = await apiFetch('/api/impact-stats', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stats }) })
       const j = await r.json()
       if (!r.ok) { setError(j.error || 'Gagal menyimpan'); setLoading(false); return }
       setUpdatedAt(j.updated_at)
@@ -2304,8 +2486,8 @@ function ImpactStatsTab() {
     <div className="space-y-5">
       {flash && <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 px-4 py-3 text-sm">✅ {flash.msg}</div>}
 
-      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 flex items-start gap-3">
-        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+      <div className="rounded-2xl border border-blue-200 bg-signal-soft/60 p-4 flex items-start gap-3">
+        <Info className="w-5 h-5 text-signal shrink-0 mt-0.5" />
         <div className="text-sm text-blue-900">
           <div className="font-semibold mb-1">Sumber Data Statistik Dampak</div>
           <p className="leading-relaxed">Ditjen Vokasi belum menyediakan API publik untuk statistik LKP dan alumni bersertifikasi. Halaman ini menjadi <strong>single source of truth</strong>: perubahan yang Anda simpan langsung tampil di halaman login publik. Untuk audit, isikan link sumber data (NILEK, laporan tahunan Ditjen, BNSP, dsb) di setiap statistik.</p>
@@ -2315,29 +2497,29 @@ function ImpactStatsTab() {
       <Card
         title="Statistik Dampak"
         desc={updatedAt ? `Terakhir diperbarui: ${new Date(updatedAt).toLocaleString('id-ID', { dateStyle:'medium', timeStyle:'short' })}` : 'Belum ada perubahan'}
-        right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
+        right={<div className="flex gap-2"><button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08]">↻ Default</button><button onClick={save} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg bg-ink text-white hover:bg-ink-soft disabled:opacity-60">{loading?'Menyimpan…':'💾 Simpan'}</button></div>}
       >
         <div className="space-y-3">
           {stats.map((s, i) => (
-            <div key={i} className="rounded-xl border border-slate-200 p-4">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">Statistik #{i+1}</div>
+            <div key={i} className="rounded-xl border border-ink/10 p-4">
+              <div className="text-[10px] text-ink-muted font-bold mb-2">Statistik #{i+1}</div>
               <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
                 <div className="md:col-span-1">
-                  <label className="text-[11px] text-slate-600">Nilai</label>
-                  <input value={s.v||''} onChange={e=>update(i,'v',e.target.value)} placeholder="1,2 Jt+" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  <label className="text-[11px] text-ink-soft">Nilai</label>
+                  <input value={s.v||''} onChange={e=>update(i,'v',e.target.value)} placeholder="1,2 Jt+" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-lg font-black text-ink focus:outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-[11px] text-slate-600">Label Utama</label>
-                  <input value={s.l||''} onChange={e=>update(i,'l',e.target.value)} placeholder="Alumni Bersertifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  <label className="text-[11px] text-ink-soft">Label Utama</label>
+                  <input value={s.l||''} onChange={e=>update(i,'l',e.target.value)} placeholder="Alumni Bersertifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
                 <div className="md:col-span-3">
-                  <label className="text-[11px] text-slate-600">Sub-label</label>
-                  <input value={s.s||''} onChange={e=>update(i,'s',e.target.value)} placeholder="BNSP-terverifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  <label className="text-[11px] text-ink-soft">Sub-label</label>
+                  <input value={s.s||''} onChange={e=>update(i,'s',e.target.value)} placeholder="BNSP-terverifikasi" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
                 <div className="md:col-span-6">
-                  <label className="text-[11px] text-slate-600">Sumber Data (URL laporan/dashboard resmi Ditjen, opsional)</label>
-                  <input value={s.source||''} onChange={e=>update(i,'source',e.target.value)} placeholder="https://nilek.kemdikbud.go.id/… atau laporan tahunan Ditjen Vokasi 2024" className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                  {s.updated_at && <div className="text-[10px] text-slate-400 mt-1">Diperbarui {new Date(s.updated_at).toLocaleString('id-ID',{ dateStyle:'medium', timeStyle:'short' })}</div>}
+                  <label className="text-[11px] text-ink-soft">Sumber Data (URL laporan/dashboard resmi Ditjen, opsional)</label>
+                  <input value={s.source||''} onChange={e=>update(i,'source',e.target.value)} placeholder="https://nilek.kemdikbud.go.id/… atau laporan tahunan Ditjen Vokasi 2024" className="mt-1 w-full px-3 py-2 rounded-lg border border-ink/10 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                  {s.updated_at && <div className="text-[10px] text-ink-muted/70 mt-1">Diperbarui {new Date(s.updated_at).toLocaleString('id-ID',{ dateStyle:'medium', timeStyle:'short' })}</div>}
                 </div>
               </div>
             </div>
@@ -2348,13 +2530,13 @@ function ImpactStatsTab() {
 
       {/* Live preview */}
       <Card title="Pratinjau di Halaman Login" desc="Tampilan akhir yang akan dilihat pengunjung">
-        <div className="rounded-2xl bg-slate-900 p-5 text-white">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-blue-200/80 font-bold mb-3">Dampak</div>
+        <div className="rounded-2xl bg-ink p-5 text-white">
+          <div className="text-[10px] text-blue-200/80 font-bold mb-3">Dampak</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {stats.map((s, i) => (
               <div key={i} className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-3">
                 <div className="text-2xl font-black tracking-tight text-white">{s.v || '—'}</div>
-                <div className="text-[10px] uppercase tracking-wider text-blue-200 font-semibold mt-1">{s.l || '—'}</div>
+                <div className="text-[10px] text-blue-200 font-semibold mt-1">{s.l || '—'}</div>
                 <div className="text-[10px] text-blue-100/70 mt-0.5">{s.s || ''}</div>
               </div>
             ))}

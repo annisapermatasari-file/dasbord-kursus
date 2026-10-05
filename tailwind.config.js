@@ -17,7 +17,17 @@ module.exports = {
         }
       },
       extend: {
+        fontFamily: {
+          sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        },
         colors: {
+          // SocialPulse design tokens
+          ink: { DEFAULT: '#0F1B3D', soft: '#1C2B57', muted: '#5B6785' },
+          paper: '#F4F6FA',
+          signal: { DEFAULT: '#2350E6', soft: '#E8EEFF', deep: '#1A3DB8' },
+          growth: { DEFAULT: '#0E9F8E', soft: '#E3F6F3' },
+          marigold: { DEFAULT: '#F0A92B', soft: '#FDF3DF', deep: '#9A6408' },
+          alert: { DEFAULT: '#E5484D', soft: '#FDECEC' },
           border: 'hsl(var(--border))',
           input: 'hsl(var(--input))',
           ring: 'hsl(var(--ring))',
