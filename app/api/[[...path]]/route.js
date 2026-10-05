@@ -13,7 +13,7 @@ import {
   updatePassword,
 } from '@/lib/users-repo'
 import { GRAPH_VERSION, hasMetaCreds, metaAuthUrl, metaExchangeCode, metaLongLived, metaGetPages, metaGetIgAccount, metaGetIgInsights, metaGetPageInsights, metaGetPageInfo, summarizePageInsights, summarizeIgInsights } from '@/lib/oauth-meta'
-import { hasGoogleCreds, googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, gaListProperties, ga4RunReport } from '@/lib/oauth-google'
+import { hasGoogleCreds, googleAuthUrl, googleExchangeCode, googleRefreshToken, ytListChannels, ytChannelStats, ytAnalyticsReport, ytTopVideos, gaListProperties, ga4Detailed } from '@/lib/oauth-google'
 import { hasTiktokCreds, tiktokAuthUrl, tiktokExchangeCode, tiktokRefreshToken, tiktokUserInfo, tiktokVideoList, summarizeTiktok } from '@/lib/oauth-tiktok'
 import { createOauthState, verifyOauthState } from '@/lib/oauth-state'
 import { SESSION_COOKIE, hashPassword, isHashed, verifyPassword, createSessionToken, readSessionToken, sessionMatchesUser, getCookie, sessionCookieOptions, safeEqual } from '@/lib/auth'
@@ -444,6 +444,21 @@ function daysParam(url, max = 90) {
   return Math.max(1, Math.min(max, +(url.searchParams.get('days') || 30) || 30))
 }
 
+/** Ubah data insights Meta (per hari) menjadi deret harian { date, ...metrik }. */
+function metaSeries(data, map) {
+  const byDate = {}
+  for (const m of data || []) {
+    const key = map[m.name]; if (!key) continue
+    for (const v of m.values || []) {
+      if (!v.end_time) continue
+      const d = v.end_time.slice(0, 10)
+      const val = typeof v.value === 'object' && v.value !== null ? Object.values(v.value).reduce((a, b) => a + (+b || 0), 0) : (+v.value || 0)
+      ;(byDate[d] ||= { date: d })[key] = val
+    }
+  }
+  return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date))
+}
+
 async function liveFacebook(request) {
   const workspace = await actorWorkspace(request)
   if (!workspace) return NextResponse.json({ connected: false })
@@ -458,7 +473,7 @@ async function liveFacebook(request) {
       metaGetPageInsights(page.id, page.access_token, days),
       metaGetPageInfo(page.id, page.access_token).catch(() => null),
     ])
-    return NextResponse.json({ connected: true, page: { id: page.id, name: page.name }, days, raw: insights.data, skipped: insights.skipped, summary: summarizePageInsights(insights.data, info) })
+    return NextResponse.json({ connected: true, page: { id: page.id, name: page.name }, days, skipped: insights.skipped, summary: summarizePageInsights(insights.data, info), series: metaSeries(insights.data, { page_total_media_view_unique: 'reach', page_media_view: 'impressions', page_post_engagements: 'engagement', page_follows: 'followers', page_video_views: 'views' }) })
   } catch (e) {
     return liveError('meta', doc, e, { page: { id: page.id, name: page.name } })
   }
@@ -478,7 +493,7 @@ async function liveInstagram(request) {
   try {
     const account = await metaGetIgAccount(ig.id, token)
     const insights = await metaGetIgInsights(ig.id, token, days)
-    return NextResponse.json({ connected: true, account, days, raw: insights.data, skipped: insights.skipped, summary: summarizeIgInsights(insights.data, account) })
+    return NextResponse.json({ connected: true, account, days, skipped: insights.skipped, summary: summarizeIgInsights(insights.data, account), series: metaSeries(insights.data, { reach: 'reach', follower_count: 'newFollowers' }) })
   } catch (e) {
     return liveError('meta', doc, e)
   }
@@ -495,9 +510,17 @@ async function liveYoutube(request) {
   const token = await ensureGoogleToken(doc)
   try {
     const stats = await ytChannelStats(token, ch.id)
-    let analytics = null
+    let analytics = null, topVideos = []
     try { analytics = await ytAnalyticsReport(token, ch.id, days) } catch (e) { /* scope yt-analytics mungkin tidak diberikan */ }
-    return NextResponse.json({ connected: true, channel: { id: ch.id, title: ch.title }, days, stats, analytics, summary: summarizeYt(stats, analytics) })
+    try { topVideos = await ytTopVideos(token, ch.id, days) } catch (e) { console.warn('yt top videos', e.message) }
+    let series = []
+    if (analytics?.rows) {
+      const cols = analytics.columnHeaders.map(c => c.name)
+      const at = (row, k) => +row[cols.indexOf(k)] || 0
+      series = analytics.rows.map(row => ({ date: row[cols.indexOf('day')], views: at(row, 'views'), minutes: at(row, 'estimatedMinutesWatched'), likes: at(row, 'likes'), comments: at(row, 'comments'), shares: at(row, 'shares'), engagement: at(row, 'likes') + at(row, 'comments') + at(row, 'shares'), newFollowers: at(row, 'subscribersGained') - at(row, 'subscribersLost') }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    }
+    return NextResponse.json({ connected: true, channel: { id: ch.id, title: ch.title }, days, summary: summarizeYt(stats, analytics), series, topVideos })
   } catch (e) {
     return liveError('google', doc, e)
   }
@@ -515,7 +538,23 @@ async function liveTiktok(request) {
     let videos = null
     try { videos = await tiktokVideoList(token) } catch (e) { console.warn('tt videos', e.message) }
     await col.updateOne({ _id: doc._id }, { $set: { user: { ...(doc.user || {}), ...user } } }).catch(() => {})
-    return NextResponse.json({ connected: true, user, videos, summary: summarizeTiktok(user, videos) })
+    const url = new URL(request.url); const days = daysParam(url, 365)
+    const since = Date.now() / 1000 - days * 86400
+    const list = (videos?.videos || [])
+    const byDay = {}
+    for (const v of list) {
+      if (!v.create_time || v.create_time < since) continue
+      const d = new Date(v.create_time * 1000).toISOString().slice(0, 10)
+      const b = (byDay[d] ||= { date: d, posts: 0, views: 0, likes: 0, comments: 0, shares: 0, engagement: 0 })
+      b.posts++; b.views += v.view_count || 0; b.likes += v.like_count || 0; b.comments += v.comment_count || 0; b.shares += v.share_count || 0
+      b.engagement += (v.like_count || 0) + (v.comment_count || 0) + (v.share_count || 0)
+    }
+    const topVideos = [...list].sort((a, b) => (b.view_count || 0) - (a.view_count || 0)).slice(0, 10).map(v => ({
+      id: v.id, title: v.title || v.video_description?.slice(0, 80) || 'Video TikTok', url: v.share_url, thumbnail: v.cover_image_url,
+      publishedAt: v.create_time ? new Date(v.create_time * 1000).toISOString() : null,
+      views: v.view_count || 0, likes: v.like_count || 0, comments: v.comment_count || 0, shares: v.share_count || 0,
+    }))
+    return NextResponse.json({ connected: true, user, days, summary: summarizeTiktok(user, videos), series: Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date)), topVideos })
   } catch (e) {
     return liveError('tiktok', doc, e, { user: doc.user, summary: summarizeTiktok(doc.user, null) })
   }
@@ -531,8 +570,9 @@ async function liveGa4(request) {
   const propId = url.searchParams.get('property_id') || doc.ga_properties[0].id
   const token = await ensureGoogleToken(doc)
   try {
-    const report = await ga4RunReport(token, propId, days)
-    return NextResponse.json({ connected: true, property_id: propId, days, raw: report, summary: summarizeGa4(report) })
+    const report = await ga4Detailed(token, propId, days)
+    const prop = doc.ga_properties.find(p => p.id === propId)
+    return NextResponse.json({ connected: true, property_id: propId, property: prop?.displayName || propId, days, ...report })
   } catch (e) {
     return liveError('google', doc, e)
   }
@@ -556,17 +596,10 @@ function summarizeYt(stats, analytics) {
     result.shares = sumCol('shares')
     result.subscribersGained = sumCol('subscribersGained')
     result.subscribersLost = sumCol('subscribersLost')
+    const avgI = cols.indexOf('averageViewDuration')
+    result.avgViewDuration = analytics.rows.length ? Math.round(analytics.rows.reduce((a,r)=>a+(+r[avgI]||0),0)/analytics.rows.length) : 0
   }
   return result
-}
-function summarizeGa4(report) {
-  const rows = report?.rows || []
-  const sum = i => rows.reduce((a,r)=>a+(+r.metricValues?.[i]?.value || 0), 0)
-  const avg = i => rows.length ? sum(i)/rows.length : 0
-  return {
-    users: sum(0), newUsers: sum(1), sessions: sum(2), pageViews: sum(3),
-    bounceRate: +(avg(4)*100).toFixed(2), avgSessionDuration: Math.round(avg(5)),
-  }
 }
 
 /* ============ USERS ============ */

@@ -230,250 +230,243 @@ export function PlatformDetailView({ platformKey, days }) {
   const curr = sliceByDays(s, days); const prev = s.slice(-days*2, -days)
   const cAgg = aggregate(curr); const pAgg = aggregate(prev.length ? prev : curr)
   const contentItems = useMemo(() => generateContentItems(days).filter(c => c.platform === platformKey), [platformKey, days])
-  const top = [...contentItems].sort((a,b)=>b.score - a.score).slice(0, 5)
-  const worst = [...contentItems].sort((a,b)=>a.score - b.score).slice(0, 3)
 
-  // Try to fetch live data — first from OAuth endpoints, then fallback to Ayrshare
+  // Data live dari koneksi OAuth (Meta / Google / TikTok)
   const [live, setLive] = useState(null)
-  const [liveSource, setLiveSource] = useState(null) // 'oauth' | 'ayrshare'
-  const [dailyLive, setDailyLive] = useState(null) // Ayrshare per-day series
+  const [liveState, setLiveState] = useState('loading') // loading | live | none | error
+  const [liveError, setLiveError] = useState('')
   useEffect(() => {
-    setLive(null); setLiveSource(null); setDailyLive(null)
+    setLive(null); setLiveState('loading'); setLiveError('')
     let cancelled = false
-    async function loadLive() {
-      const oauthEndpoint = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary', tiktok:'/api/live/tiktok/summary' }[platformKey]
-      // 1) Try OAuth endpoint
-      if (oauthEndpoint) {
-        try {
-          const j = await apiFetch(`${oauthEndpoint}?days=${days}`).then(r=>r.json())
-          if (!cancelled && j.connected && !j.error) { setLive(j); setLiveSource('oauth'); return }
-        } catch {}
-      }
-      // 2) Fallback to Ayrshare aggregate + history for daily
-      try {
-        const j = await apiFetch(`/api/ayrshare/analytics?platforms=${platformKey}`).then(r=>r.json())
-        if (cancelled) return
-        if (j.connected && j.data && !j.error) {
-          const platData = j.data[platformKey] || j.data[platformKey.toLowerCase()]
-          if (platData && !platData.error) {
-            const a = platData.analytics || platData
-            setLive({
-              connected: true,
-              account: { username: a.username || a.name },
-              channel: { title: a.title || a.channelTitle },
-              page: { name: a.pageName || a.name },
-              summary: {
-                followers: a.followersCount ?? a.subscriberCount ?? a.likes ?? a.followers ?? 0,
-                reach: a.reach ?? a.impressions ?? 0,
-                impressions: a.impressions ?? 0,
-                engagement: a.engagement ?? (a.likeCount||0)+(a.commentsCount||0),
-                likes: a.likeCount ?? a.likes ?? 0,
-                comments: a.commentsCount ?? a.comments ?? 0,
-                views: a.viewCount ?? a.videoViews ?? a.views ?? 0,
-                videos: a.mediaCount ?? a.videoCount ?? 0,
-                subscribers: a.subscriberCount ?? 0,
-                fansEnd: a.followersCount ?? 0,
-                totalViews: a.viewCount ?? 0,
-              },
-              ayrshareRaw: platData,
-            })
-            setLiveSource('ayrshare')
-          }
-        }
-      } catch {}
-      // 3) Also try daily history (independent of aggregate result)
-      try {
-        const h = await apiFetch(`/api/ayrshare/history?platform=${platformKey}&days=${days}`).then(r=>r.json())
-        if (cancelled) return
-        if (h.connected && Array.isArray(h.series) && h.series.length && h.rawCount > 0) {
-          setDailyLive(h.series)
-        }
-      } catch {}
-    }
-    loadLive()
+    const ep = { instagram:'/api/live/instagram/summary', facebook:'/api/live/facebook/summary', youtube:'/api/live/youtube/summary', tiktok:'/api/live/tiktok/summary' }[platformKey]
+    apiFetch(`${ep}?days=${days}`).then(r => r.json()).then(j => {
+      if (cancelled) return
+      if (j.connected && !j.error) { setLive(j); setLiveState('live') }
+      else if (j.connected && j.error) { setLiveState('error'); setLiveError(j.error) }
+      else setLiveState('none')
+    }).catch(() => { if (!cancelled) setLiveState('none') })
     return () => { cancelled = true }
   }, [platformKey, days])
+
+  const L = live?.summary || {}
+  const isLive = liveState === 'live'
+  const S = (label, liveVal, mockVal, extra = {}) => (isLive && liveVal != null)
+    ? { label, value: liveVal, prev: null, isLive: true, ...extra, spark: extra.liveSpark }
+    : { label, value: mockVal, prev: extra.mockPrev ?? null, ...extra, spark: extra.mockSpark }
+  const series = isLive && Array.isArray(live.series) && live.series.length ? live.series : null
+  const sp = k => series ? series.map(r => r[k] || 0) : undefined
+
   const kpiMap = {
     instagram: [
-      { label:'Followers', value: cAgg.followers, prev: pAgg.followers, spark: curr.map(r=>r.followers) },
-      { label:'Follower Growth', value: cAgg.followerGrowth, prev: pAgg.followerGrowth, prefix:'+' },
-      { label:'Posts', value: cAgg.contentPublished, prev: pAgg.contentPublished, spark: curr.map(r=>r.contentPublished) },
-      { label:'Reach', value: cAgg.reach, prev: pAgg.reach, spark: curr.map(r=>r.reach) },
-      { label:'Impressions', value: cAgg.impressions, prev: pAgg.impressions, spark: curr.map(r=>r.impressions) },
-      { label:'Profile Visits', value: Math.round(cAgg.reach*0.045), prev: Math.round(pAgg.reach*0.045) },
-      { label:'Website Clicks', value: Math.round(cAgg.reach*0.012), prev: Math.round(pAgg.reach*0.012) },
-      { label:'Likes', value: cAgg.likes, prev: pAgg.likes, spark: curr.map(r=>r.likes) },
-      { label:'Comments', value: cAgg.comments, prev: pAgg.comments },
-      { label:'Shares', value: cAgg.shares, prev: pAgg.shares },
-      { label:'Saves', value: cAgg.saves, prev: pAgg.saves },
-      { label:'Engagement Rate', value: cAgg.engagementRate, prev: pAgg.engagementRate, format:'pct' },
+      S('Followers', L.followers, cAgg.followers, { mockPrev: pAgg.followers, mockSpark: curr.map(r=>r.followers) }),
+      S('Follower baru', L.newFollowers, cAgg.followerGrowth, { mockPrev: pAgg.followerGrowth, prefix:'+', liveSpark: sp('newFollowers') }),
+      S('Jangkauan', L.reach, cAgg.reach, { mockPrev: pAgg.reach, mockSpark: curr.map(r=>r.reach), liveSpark: sp('reach') }),
+      S('Penayangan', L.views, cAgg.impressions, { mockPrev: pAgg.impressions }),
+      S('Kunjungan profil', L.profileViews, Math.round(cAgg.reach*0.045)),
+      S('Klik website', L.websiteClicks, Math.round(cAgg.reach*0.012)),
+      S('Akun yang berinteraksi', L.accountsEngaged, Math.round(cAgg.reach*0.06)),
+      S('Likes', L.likes, cAgg.likes, { mockPrev: pAgg.likes }),
+      S('Komentar', L.comments, cAgg.comments, { mockPrev: pAgg.comments }),
+      S('Dibagikan', L.shares, cAgg.shares, { mockPrev: pAgg.shares }),
+      S('Disimpan', L.saves, cAgg.saves, { mockPrev: pAgg.saves }),
+      S('Total interaksi', L.interactions, cAgg.engagement, { mockPrev: pAgg.engagement }),
     ],
     facebook: [
-      { label:'Page Followers', value: cAgg.followers, prev: pAgg.followers, spark: curr.map(r=>r.followers) },
-      { label:'Follower Growth', value: cAgg.followerGrowth, prev: pAgg.followerGrowth, prefix:'+' },
-      { label:'Reach', value: cAgg.reach, prev: pAgg.reach, spark: curr.map(r=>r.reach) },
-      { label:'Impressions', value: cAgg.impressions, prev: pAgg.impressions },
-      { label:'Post Engagement', value: cAgg.engagement, prev: pAgg.engagement, spark: curr.map(r=>r.engagement) },
-      { label:'Likes', value: cAgg.likes, prev: pAgg.likes },
-      { label:'Comments', value: cAgg.comments, prev: pAgg.comments },
-      { label:'Shares', value: cAgg.shares, prev: pAgg.shares },
-      { label:'Video Views', value: cAgg.views, prev: pAgg.views, spark: curr.map(r=>r.views) },
-      { label:'Link Clicks', value: Math.round(cAgg.reach*0.021), prev: Math.round(pAgg.reach*0.021) },
-      { label:'Engagement Rate', value: cAgg.engagementRate, prev: pAgg.engagementRate, format:'pct' },
+      S('Followers halaman', L.followers, cAgg.followers, { mockPrev: pAgg.followers, mockSpark: curr.map(r=>r.followers), liveSpark: sp('followers') }),
+      S('Follower baru', L.newFollows, cAgg.followerGrowth, { mockPrev: pAgg.followerGrowth, prefix:'+' }),
+      S('Jangkauan', L.reach, cAgg.reach, { mockPrev: pAgg.reach, mockSpark: curr.map(r=>r.reach), liveSpark: sp('reach') }),
+      S('Penayangan', L.views, cAgg.impressions, { mockPrev: pAgg.impressions, liveSpark: sp('impressions') }),
+      S('Engagement post', L.engagement, cAgg.engagement, { mockPrev: pAgg.engagement, liveSpark: sp('engagement') }),
+      S('Reaksi', L.reactions, cAgg.likes, { mockPrev: pAgg.likes }),
+      S('Penayangan video', L.videoViews, cAgg.views, { mockPrev: pAgg.views, liveSpark: sp('views') }),
     ],
     youtube: [
-      { label:'Subscribers', value: cAgg.followers, prev: pAgg.followers, spark: curr.map(r=>r.followers) },
-      { label:'Subscriber Growth', value: cAgg.followerGrowth, prev: pAgg.followerGrowth, prefix:'+' },
-      { label:'Views', value: cAgg.views, prev: pAgg.views, spark: curr.map(r=>r.views) },
-      { label:'Watch Time (menit)', value: Math.round(cAgg.views*3.4), prev: Math.round(pAgg.views*3.4) },
-      { label:'Avg View Duration (dt)', value: 214, prev: 198, format:'time' },
-      { label:'Likes', value: cAgg.likes, prev: pAgg.likes },
-      { label:'Comments', value: cAgg.comments, prev: pAgg.comments },
-      { label:'Shares', value: cAgg.shares, prev: pAgg.shares },
-      { label:'Impressions', value: cAgg.impressions, prev: pAgg.impressions },
-      { label:'CTR', value: +(cAgg.views/cAgg.impressions*100||0).toFixed(2), prev: +(pAgg.views/pAgg.impressions*100||0).toFixed(2), format:'pct' },
-      { label:'Videos Published', value: cAgg.contentPublished, prev: pAgg.contentPublished },
+      S('Subscribers', L.subscribers, cAgg.followers, { mockPrev: pAgg.followers, mockSpark: curr.map(r=>r.followers) }),
+      S('Subscriber baru', L.subscribersGained != null ? L.subscribersGained - (L.subscribersLost || 0) : null, cAgg.followerGrowth, { mockPrev: pAgg.followerGrowth, prefix:'+', liveSpark: sp('newFollowers') }),
+      S('Views periode ini', L.periodViews, cAgg.views, { mockPrev: pAgg.views, mockSpark: curr.map(r=>r.views), liveSpark: sp('views') }),
+      S('Waktu tonton (menit)', L.watchTimeMin, Math.round(cAgg.views*3.4), { liveSpark: sp('minutes') }),
+      S('Rata-rata durasi tonton', L.avgViewDuration, 214, { format:'time' }),
+      S('Likes', L.likes, cAgg.likes, { mockPrev: pAgg.likes, liveSpark: sp('likes') }),
+      S('Komentar', L.comments, cAgg.comments, { mockPrev: pAgg.comments }),
+      S('Dibagikan', L.shares, cAgg.shares, { mockPrev: pAgg.shares }),
+      S('Total views channel', L.totalViews, cAgg.views*12),
+      S('Jumlah video', L.videos, cAgg.contentPublished),
     ],
     tiktok: [
-      { label:'Followers', value: cAgg.followers, prev: pAgg.followers, spark: curr.map(r=>r.followers) },
-      { label:'Follower Growth', value: cAgg.followerGrowth, prev: pAgg.followerGrowth, prefix:'+' },
-      { label:'Video Views', value: cAgg.views, prev: pAgg.views, spark: curr.map(r=>r.views) },
-      { label:'Likes', value: cAgg.likes, prev: pAgg.likes, spark: curr.map(r=>r.likes) },
-      { label:'Comments', value: cAgg.comments, prev: pAgg.comments },
-      { label:'Shares', value: cAgg.shares, prev: pAgg.shares },
-      { label:'Saves', value: cAgg.saves, prev: pAgg.saves },
-      { label:'Profile Views', value: Math.round(cAgg.reach*0.038), prev: Math.round(pAgg.reach*0.038) },
-      { label:'Engagement Rate', value: cAgg.engagementRate, prev: pAgg.engagementRate, format:'pct' },
+      S('Followers', L.followers, cAgg.followers, { mockPrev: pAgg.followers, mockSpark: curr.map(r=>r.followers) }),
+      S('Following', L.following, Math.round(cAgg.followers*0.02)),
+      S('Total likes akun', L.likes, cAgg.likes*8),
+      S('Jumlah video', L.videos, cAgg.contentPublished),
+      S('Views video terbaru', L.views, cAgg.views, { mockPrev: pAgg.views, liveSpark: sp('views') }),
+      S('Likes video terbaru', L.recentLikes, cAgg.likes, { mockPrev: pAgg.likes }),
+      S('Komentar video terbaru', L.recentComments, cAgg.comments, { mockPrev: pAgg.comments }),
+      S('Dibagikan', L.recentShares, cAgg.shares, { mockPrev: pAgg.shares }),
     ],
   }
+  const kpis = kpiMap[platformKey]
+
+  // Data grafik: deret harian live bila tersedia, kalau tidak pakai data contoh
+  const chartData = series
+    ? series.map(r => ({ date: r.date, reach: r.reach ?? r.views ?? 0, engagement: r.engagement ?? 0, followers: r.followers ?? r.newFollowers ?? 0, contentPublished: r.posts ?? 0, views: r.views ?? 0 }))
+    : curr
+  const reachLabel = platformKey === 'youtube' || platformKey === 'tiktok' ? 'Views' : 'Jangkauan'
+  const followerSeriesLabel = series && !series.some(r => r.followers) ? 'Follower baru per hari' : 'Followers'
+
+  const liveTop = isLive && Array.isArray(live.topVideos) && live.topVideos.length ? live.topVideos : null
+  const top = [...contentItems].sort((a,b)=>b.score - a.score).slice(0, 5)
+  const insights = generateInsights(cAgg, pAgg, { [platformKey]: cAgg })
   const icons = { instagram: Instagram, facebook: Facebook, youtube: Youtube, tiktok: Music2 }
   const Icon = icons[platformKey] || Sparkles
-  let kpis = kpiMap[platformKey]
-  // Override KPIs with LIVE numbers when available
-  if (live?.summary) {
-    const s = live.summary
-    const overrideMap = {
-      instagram: { 'Followers': s.followers, 'Reach': s.reach, 'Impressions': s.impressions, 'Likes': s.likes, 'Comments': s.comments },
-      facebook: { 'Page Followers': s.fansEnd || s.followers, 'Reach': s.reach, 'Impressions': s.impressions, 'Post Engagement': s.engagement, 'Likes': s.likes, 'Comments': s.comments, 'Video Views': s.views },
-      youtube: { 'Subscribers': s.subscribers || s.followers, 'Views': s.totalViews || s.views, 'Likes': s.likes, 'Comments': s.comments },
-      tiktok: { 'Followers': s.followers, 'Video Views': s.views, 'Likes': s.likes, 'Comments': s.comments },
-    }[platformKey] || {}
-    kpis = kpis.map(k => (overrideMap[k.label] != null && overrideMap[k.label] > 0) ? { ...k, value: overrideMap[k.label], isLive: true } : k)
-  }
-  const insights = generateInsights(cAgg, pAgg, { [platformKey]: cAgg })
-  // Merge daily live series with mock followers curve so all four charts have data
-  const chartData = dailyLive
-    ? dailyLive.map((d, i) => ({
-        ...d,
-        followers: curr[i]?.followers || 0,
-        contentPublished: d.posts,
-      }))
-    : curr
+  const handle = live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || live?.user?.display_name || platform.handle
+  const badge = {
+    loading: ['bg-ink/[0.05] text-ink-muted', 'Memeriksa koneksi…'],
+    live: ['bg-growth-soft text-growth', 'Data live'],
+    error: ['bg-alert-soft text-alert', 'Koneksi bermasalah'],
+    none: ['bg-marigold-soft text-marigold-deep', 'Data contoh'],
+  }[liveState]
+
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4">
+      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4 flex-wrap">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: platform.color+'18', color: platform.color }}><Icon className="w-7 h-7" /></div>
-        <div className="flex-1">
-          <div className="text-[11px] text-ink-muted/70 font-semibold">Akun {platform.name}</div>
-          <div className="text-lg font-bold text-ink">{live?.account?.username ? '@'+live.account.username : live?.channel?.title || live?.page?.name || platform.handle}</div>
-          {live && <div className="text-xs text-ink-muted mt-0.5">
-            {platformKey==='instagram' && live.summary && `${formatNumber(live.account?.followers_count||live.summary.followers||0)} followers · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.impressions||0)} impressions${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
-            {platformKey==='facebook' && live.summary && `${formatNumber(live.summary.fansEnd||live.summary.followers||0)} fans · ${formatNumber(live.summary.reach||0)} reach · ${formatNumber(live.summary.engagement||0)} engagement${liveSource==='oauth'?` (live ${days}d)`:' (live · Ayrshare)'}`}
-            {platformKey==='youtube' && live.summary && `${formatNumber(live.summary.subscribers||live.summary.followers||0)} subscribers · ${formatNumber(live.summary.totalViews||live.summary.views||0)} views${liveSource==='oauth'?'':' (live · Ayrshare)'}`}
-            {platformKey==='tiktok' && live.summary && `${formatNumber(live.summary.followers||0)} followers · ${formatNumber(live.summary.views||0)} video views · ${formatNumber(live.summary.likes||0)} likes${liveSource==='oauth'?'':' (live · Ayrshare)'}`}
-          </div>}
+        <div className="flex-1 min-w-0">
+          <div className="text-[12.5px] text-ink-muted">Akun {platform.name}</div>
+          <div className="text-lg font-bold text-ink truncate">{handle}</div>
+          {liveState === 'error' && <div className="text-[12.5px] text-alert mt-0.5">{liveError} — buka Pengaturan lalu sambungkan ulang.</div>}
+          {liveState === 'none' && <div className="text-[12.5px] text-ink-muted mt-0.5">Belum terhubung. Angka di bawah adalah data contoh.</div>}
         </div>
-        {live
-          ? <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 inline-flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Live · {liveSource==='ayrshare'?'via Ayrshare':'OAuth Langsung'}</span>
-          : <span className="text-xs px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 font-medium">🟡 Mock Data</span>
-        }
+        <span className={`text-[12px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1.5 ${badge[0]}`}>{liveState === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-growth animate-pulse" />}{badge[1]}</span>
       </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
-      {dailyLive && <div className="text-[11px] px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 inline-flex items-center gap-2 font-medium">📈 Grafik menggunakan data harian LIVE dari Ayrshare · {dailyLive.length} hari</div>}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card title={dailyLive ? "Reach & Engagement Trend (Live · Ayrshare)" : "Reach & Engagement Trend"} desc={dailyLive ? "Perkembangan harian dari post yang dipublikasikan via Ayrshare" : "Perkembangan harian (mock)"}>
+        <Card title={`${reachLabel} dan engagement harian`} desc={series ? `Data live ${days} hari terakhir` : 'Data contoh'}>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={chartData}>
-              <defs><linearGradient id={`re-${platformKey}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={platform.color} stopOpacity={0.35} /><stop offset="100%" stopColor={platform.color} stopOpacity={0} /></linearGradient></defs>
+              <defs><linearGradient id={`re-${platformKey}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={platform.color} stopOpacity={0.3} /><stop offset="100%" stopColor={platform.color} stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" name="Reach" dataKey="reach" stroke={platform.color} strokeWidth={2} fill={`url(#re-${platformKey})`} />
+              <Area type="monotone" name={reachLabel} dataKey="reach" stroke={platform.color} strokeWidth={2} fill={`url(#re-${platformKey})`} />
               <Line type="monotone" name="Engagement" dataKey="engagement" stroke="#0E9F8E" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Follower Growth" desc={dailyLive ? "Estimasi (Ayrshare tidak mengembalikan history follower harian)" : "Perkembangan pengikut"}>
+        <Card title={followerSeriesLabel} desc={series ? 'Data live' : 'Data contoh'}>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>
+            {series && !series.some(r => r.followers)
+              ? <BarChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="followers" name="Follower baru" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
+              : <LineChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} domain={['auto','auto']} /><Tooltip content={<ChartTooltip />} /><Line type="monotone" name="Followers" dataKey="followers" stroke={platform.color} strokeWidth={2.4} dot={false} /></LineChart>}
           </ResponsiveContainer>
         </Card>
-        <Card title={dailyLive ? "Posting Frequency (Live · Ayrshare)" : "Posting Frequency"} desc={dailyLive ? "Jumlah post nyata via Ayrshare" : "Jumlah konten per hari"}>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
-          </ResponsiveContainer>
-        </Card>
-        <Card title="Top Performing Content" desc="5 konten dengan skor tertinggi">
-          <div className="space-y-2.5">
-            {top.map((c,i) => { const cat = scoreCategory(c.score); return (
-              <div key={c.id} className="flex items-center gap-3 rounded-lg border border-ink/[0.06] p-2.5 hover:bg-paper">
-                <div className="w-8 h-8 rounded-lg bg-ink/[0.05] flex items-center justify-center text-ink-muted text-xs font-bold">#{i+1}</div>
-                <div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{c.title}</div><div className="text-[11px] text-ink-muted">{c.type} · {c.topic} · {formatNumber(c.reach)} reach · {c.engagementRate}%</div></div>
-                <ScoreBadge score={c.score} category={cat} />
-              </div>) })}
-          </div>
-        </Card>
-        {platformKey === 'youtube' && (
-          <Card title="Worst Performing Videos" desc="Perlu perbaikan konten/thumbnail/judul" className="xl:col-span-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {worst.map(c => { const cat = scoreCategory(c.score); return (
-                <div key={c.id} className="rounded-xl border border-red-100 bg-red-50/40 p-3">
-                  <div className="text-xs text-ink-muted">{c.type} · {c.topic}</div>
-                  <div className="text-sm font-medium text-ink mt-1">{c.title}</div>
-                  <div className="text-xs text-ink-muted mt-2">Reach {formatNumber(c.reach)} · Views {formatNumber(c.views)}</div>
-                  <div className="mt-2"><ScoreBadge score={c.score} category={cat} /></div>
-                </div>) })}
-            </div>
+
+        {liveTop ? (
+          <Card title={platformKey === 'youtube' ? 'Video dengan views terbanyak' : 'Video terbaru dengan views terbanyak'} desc="Data live" className="xl:col-span-2">
+            <ol className="divide-y divide-ink/[0.06]">
+              {liveTop.map((v, i) => (
+                <li key={v.id} className="flex items-center gap-3 py-2.5">
+                  <span className="w-5 text-[13px] font-bold text-ink-muted tabular">{i+1}</span>
+                  {v.thumbnail ? <img src={v.thumbnail} alt="" className="w-16 h-10 rounded-md object-cover bg-paper shrink-0" loading="lazy" /> : <span className="w-16 h-10 rounded-md bg-paper shrink-0" />}
+                  <div className="min-w-0 flex-1">
+                    <a href={v.url} target="_blank" rel="noreferrer" className="text-[14px] font-semibold text-ink hover:text-signal line-clamp-1">{v.title}</a>
+                    <div className="text-[12px] text-ink-muted tabular">{v.publishedAt ? new Date(v.publishedAt).toLocaleDateString('id-ID',{ day:'numeric', month:'short', year:'numeric' }) : ''}{v.minutes ? ` · ${formatNumber(v.minutes)} menit ditonton` : ''}</div>
+                  </div>
+                  <div className="text-right tabular shrink-0">
+                    <div className="text-[14px] font-bold text-ink">{formatNumber(v.views)}</div>
+                    <div className="text-[11.5px] text-ink-muted">{formatNumber(v.likes)} likes · {formatNumber(v.comments)} komentar</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </Card>
+        ) : (
+          <>
+            <Card title="Frekuensi posting" desc={series ? 'Data live' : 'Data contoh'}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData}><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} allowDecimals={false} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="contentPublished" name="Konten" fill={platform.color} radius={[4,4,0,0]} /></BarChart>
+              </ResponsiveContainer>
+            </Card>
+            <Card title="Konten terbaik" desc="Data contoh — daftar per postingan belum tersedia untuk kanal ini">
+              <div className="space-y-2.5">
+                {top.map((c,i) => { const cat = scoreCategory(c.score); return (
+                  <div key={c.id} className="flex items-center gap-3 rounded-lg border border-ink/[0.06] p-2.5">
+                    <div className="w-7 text-ink-muted text-[13px] font-bold tabular">{i+1}</div>
+                    <div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{c.title}</div><div className="text-[11.5px] text-ink-muted">{c.type} · {formatNumber(c.reach)} jangkauan · {c.engagementRate}%</div></div>
+                    <ScoreBadge score={c.score} category={cat} />
+                  </div>) })}
+              </div>
+            </Card>
+          </>
         )}
       </div>
-      <AIInsightsPanel scope={platformKey} context={{ platform: platform.name, handle: platform.handle, periode_hari: days, ringkasan: cAgg, sebelumnya: pAgg, top_konten: top.map(t=>({title:t.title,type:t.type,topic:t.topic,score:t.score,engagementRate:t.engagementRate})) }} fallback={insights} />
+      <AIInsightsPanel scope={platformKey} context={isLive ? { platform: platform.name, akun: handle, periode_hari: days, ringkasan_live: L, harian: series?.slice(-31), konten_teratas: liveTop?.slice(0,5) } : { platform: platform.name, periode_hari: days, ringkasan: cAgg, sebelumnya: pAgg }} fallback={insights} />
     </div>
   )
 }
 
 /* =========== WEBSITE =========== */
 export function WebsiteView({ days }) {
-  const w = useMemo(() => generateWebsite(days), [days])
+  const mock = useMemo(() => generateWebsite(days), [days])
+  const [ga, setGa] = useState(null)
+  const [gaState, setGaState] = useState('loading')
+  const [gaError, setGaError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    setGaState('loading'); setGa(null)
+    apiFetch(`/api/live/ga4/summary?days=${days}`).then(r => r.json()).then(j => {
+      if (cancelled) return
+      if (j.connected && !j.error && j.totals) { setGa(j); setGaState('live') }
+      else if (j.connected && j.error) { setGaState('error'); setGaError(j.error) }
+      else setGaState('none')
+    }).catch(() => { if (!cancelled) setGaState('none') })
+    return () => { cancelled = true }
+  }, [days])
+  const isLive = gaState === 'live'
+  const w = isLive ? {
+    totals: ga.totals,
+    trend: ga.trend,
+    topPages: ga.topPages.length ? ga.topPages : [{ path: '/', title: 'Belum ada data', views: 0 }],
+    sources: ga.sources,
+    socialRef: ga.socialRef,
+  } : mock
   const wPrev = useMemo(() => generateWebsite(Math.max(days,7)), [days])
+  const P = v => isLive ? null : v
   const kpis = [
-    { label:'Users', value: w.totals.users, prev: Math.round(w.totals.users*0.92), spark: w.trend.map(r=>r.users) },
-    { label:'New Users', value: w.totals.newUsers, prev: Math.round(w.totals.newUsers*0.9), spark: w.trend.map(r=>r.newUsers) },
-    { label:'Sessions', value: w.totals.sessions, prev: Math.round(w.totals.sessions*0.94), spark: w.trend.map(r=>r.sessions) },
-    { label:'Page Views', value: w.totals.pageViews, prev: Math.round(w.totals.pageViews*0.93), spark: w.trend.map(r=>r.pageViews) },
-    { label:'Avg Session (dt)', value: w.totals.avgDuration, prev: w.totals.avgDuration-8, format:'time' },
-    { label:'Bounce Rate', value: w.totals.bounce, prev: w.totals.bounce+1.4, format:'pct' },
+    { label:'Pengguna', value: w.totals.users, prev: P(Math.round(w.totals.users*0.92)), spark: w.trend.map(r=>r.users), isLive },
+    { label:'Pengguna baru', value: w.totals.newUsers, prev: P(Math.round(w.totals.newUsers*0.9)), spark: w.trend.map(r=>r.newUsers), isLive },
+    { label:'Sesi', value: w.totals.sessions, prev: P(Math.round(w.totals.sessions*0.94)), spark: w.trend.map(r=>r.sessions), isLive },
+    { label:'Halaman dilihat', value: w.totals.pageViews, prev: P(Math.round(w.totals.pageViews*0.93)), spark: w.trend.map(r=>r.pageViews), isLive },
+    { label:'Rata-rata durasi sesi', value: w.totals.avgDuration, prev: P(w.totals.avgDuration-8), format:'time', isLive },
+    { label:'Bounce rate', value: w.totals.bounce, prev: P(w.totals.bounce+1.4), format:'pct', isLive },
   ]
-  const insights = { findings:[`Total pengunjung ${formatNumber(w.totals.users)} pada periode ini.`,`Halaman paling dikunjungi: ${w.topPages[0].title} (${formatNumber(w.topPages[0].views)} views).`], opportunities:['Sumber sosial menyumbang 24% traffic — kolaborasi cross-posting dari Instagram/TikTok dapat digandakan.'], risks:[w.totals.bounce>50?`Bounce rate ${w.totals.bounce}% relatif tinggi — audit CTA landing page.`:'Bounce rate dalam batas wajar.'], actions:['Optimasi SEO halaman pendaftaran (15% traffic).','Buat landing page khusus per campaign.'], ideas:['Artikel SEO: "Cara Memilih Kursus Bersertifikasi BNSP".'] }
+  const socialShare = (w.sources.find(x => /social/i.test(x.name))?.value) ?? 0
+  const insights = { findings:[`Total pengunjung ${formatNumber(w.totals.users)} pada periode ini.`,`Halaman paling dikunjungi: ${w.topPages[0].title} (${formatNumber(w.topPages[0].views)} views).`], opportunities:[`Media sosial menyumbang ${socialShare}% sesi — cross-posting dari Instagram/TikTok bisa memperbesar angka ini.`], risks:[w.totals.bounce>50?`Bounce rate ${w.totals.bounce}% relatif tinggi — audit CTA landing page.`:'Bounce rate dalam batas wajar.'], actions:['Optimasi SEO halaman pendaftaran (15% traffic).','Buat landing page khusus per campaign.'], ideas:['Artikel SEO: "Cara Memilih Kursus Bersertifikasi BNSP".'] }
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4">
+      <div className="bg-white rounded-xl border border-ink/[0.08] p-5 flex items-center gap-4 flex-wrap">
         <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-sky-50 text-sky-600"><Globe className="w-7 h-7" /></div>
-        <div><div className="text-[11px] text-ink-muted/70 font-semibold">Website</div><div className="text-lg font-bold text-ink">{findPlatform('website').handle}</div></div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[12.5px] text-ink-muted">Website · Google Analytics 4</div>
+          <div className="text-lg font-bold text-ink truncate">{isLive ? ga.property : findPlatform('website').handle}</div>
+          {gaState === 'error' && <div className="text-[12.5px] text-alert mt-0.5">{gaError} — buka Pengaturan lalu sambungkan ulang Google.</div>}
+          {gaState === 'none' && <div className="text-[12.5px] text-ink-muted mt-0.5">Belum terhubung. Angka di bawah adalah data contoh.</div>}
+        </div>
+        <span className={`text-[12px] px-2.5 py-1 rounded-full font-semibold ${isLive ? 'bg-growth-soft text-growth' : gaState === 'error' ? 'bg-alert-soft text-alert' : gaState === 'loading' ? 'bg-ink/[0.05] text-ink-muted' : 'bg-marigold-soft text-marigold-deep'}`}>{isLive ? 'Data live' : gaState === 'error' ? 'Koneksi bermasalah' : gaState === 'loading' ? 'Memeriksa koneksi…' : 'Data contoh'}</span>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">{kpis.map(k => <KpiCard key={k.label} {...k} />)}</div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card title="Traffic Trend" desc="Pengunjung harian" className="xl:col-span-2">
+        <Card title="Pengunjung harian" desc={isLive ? "Data live" : "Data contoh"} className="xl:col-span-2">
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={w.trend}><defs><linearGradient id="wtG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.35} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Users" dataKey="users" stroke="#0EA5E9" strokeWidth={2} fill="url(#wtG)" /><Line type="monotone" name="Sessions" dataKey="sessions" stroke="#2350E6" strokeWidth={2} dot={false} /></AreaChart>
+            <AreaChart data={w.trend}><defs><linearGradient id="wtG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.35} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#E6EAF2" vertical={false} /><XAxis axisLine={false} tickLine={false} dataKey="date" tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={fmtShortDate} minTickGap={20} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize:11, fill:'#5B6785' }} tickFormatter={formatNumber} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" name="Pengguna" dataKey="users" stroke="#0EA5E9" strokeWidth={2} fill="url(#wtG)" /><Line type="monotone" name="Sesi" dataKey="sessions" stroke="#2350E6" strokeWidth={2} dot={false} /></AreaChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Traffic Sources" desc="Distribusi sumber pengunjung">
+        <Card title="Sumber traffic" desc="Persentase sesi per kanal">
           <ResponsiveContainer width="100%" height={230}><PieChart><Pie data={w.sources} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>{w.sources.map((e,i)=><Cell key={i} fill={['#2350E6','#0EA5E9','#0E9F8E','#F59E0B','#8B5CF6','#EF4444'][i%6]} />)}</Pie><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /></PieChart></ResponsiveContainer>
           <div className="space-y-1.5 mt-2">{w.sources.map((p,i)=><div key={p.name} className="flex items-center gap-2 text-xs"><span className="w-2.5 h-2.5 rounded-full" style={{ background:['#2350E6','#0EA5E9','#0E9F8E','#F59E0B','#8B5CF6','#EF4444'][i%6] }} /><span className="flex-1 text-ink-soft">{p.name}</span><span className="font-medium text-ink">{p.value}%</span></div>)}</div>
         </Card>
-        <Card title="Top Pages" desc="Halaman paling dikunjungi" className="xl:col-span-2">
+        <Card title="Halaman paling dikunjungi" desc={isLive ? "Data live" : "Data contoh"} className="xl:col-span-2">
           <div className="space-y-1.5">{w.topPages.map((p,i)=>(<div key={p.path} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-paper"><div className="w-8 h-8 rounded-lg bg-ink/[0.05] flex items-center justify-center text-ink-muted text-xs font-bold">#{i+1}</div><div className="min-w-0 flex-1"><div className="text-sm font-medium text-ink truncate">{p.title}</div><div className="text-[11px] text-ink-muted font-mono">{p.path}</div></div><div className="text-sm font-semibold text-ink">{formatNumber(p.views)}</div></div>))}</div>
         </Card>
-        <Card title="Social Referral" desc="Traffic dari sosial media">
+        <Card title="Rujukan media sosial" desc="Persentase sesi dari tiap media sosial">
           <ResponsiveContainer width="100%" height={230}><BarChart data={w.socialRef} layout="vertical"><CartesianGrid stroke="#E6EAF2" horizontal={false} /><XAxis axisLine={false} tickLine={false} type="number" tick={{ fontSize:11, fill:'#5B6785' }} /><YAxis axisLine={false} tickLine={false} dataKey="name" type="category" tick={{ fontSize:12, fill:'#5B6785' }} width={80} /><Tooltip content={<ChartTooltip formatter={v=>v+'%'} />} /><Bar dataKey="value" name="Share (%)" fill="#0EA5E9" radius={[0,6,6,0]} /></BarChart></ResponsiveContainer>
         </Card>
       </div>
@@ -842,8 +835,6 @@ export function SettingsView({ plan = 'starter' }) {
   const [conns, setConns] = useState([])
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState(null)
-  const [ayr, setAyr] = useState(null)
-  const [ayrBusy, setAyrBusy] = useState(false)
   const [oauthCfg, setOauthCfg] = useState(null)
   const [busyProvider, setBusyProvider] = useState(null)
 
@@ -852,40 +843,11 @@ export function SettingsView({ plan = 'starter' }) {
     try { const r = await apiFetch('/api/connections'); const j = await r.json(); setConns(j.connections || []) } catch {}
     setLoading(false)
   }
-  const loadAyr = async () => {
-    try { const r = await apiFetch('/api/ayrshare/status'); const j = await r.json(); setAyr(j) } catch {}
-  }
-  const startAyrConnect = async () => {
-    setAyrBusy(true)
-    try {
-      const r = await apiFetch('/api/ayrshare/link', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ platforms: ['facebook','instagram','youtube','tiktok'] }) })
-      const j = await r.json()
-      if (j.url) {
-        window.open(j.url, 'ayrshare_link', 'width=720,height=780')
-        setFlash({ ok:true, provider:'Ayrshare', message:'Silakan hubungkan akun media sosial di jendela yang terbuka. Setelah selesai, klik Refresh.' })
-      } else {
-        setFlash({ ok:false, provider:'Ayrshare', message: j.error || 'Gagal generate URL' })
-      }
-    } catch (e) { setFlash({ ok:false, provider:'Ayrshare', message:String(e?.message||e) }) }
-    setAyrBusy(false)
-  }
-  const refreshAyr = async () => {
-    setAyrBusy(true)
-    try { await apiFetch('/api/ayrshare/refresh'); await loadAyr() } catch {}
-    setAyrBusy(false)
-  }
-  const disconnectAyr = async () => {
-    if (!confirm('Hapus profile Ayrshare? Semua koneksi sosial via Ayrshare akan hilang.')) return
-    setAyrBusy(true)
-    try { await apiFetch('/api/ayrshare/profile', { method:'DELETE' }); setAyr(null); await loadAyr() } catch {}
-    setAyrBusy(false)
-  }
   const loadOauthCfg = async () => {
     try { const r = await apiFetch('/api/oauth/config'); setOauthCfg(await r.json()) } catch {}
   }
   useEffect(() => {
     loadConns()
-    loadAyr()
     loadOauthCfg()
     const onMsg = (e) => {
       if (e.origin !== window.location.origin) return
@@ -1077,57 +1039,6 @@ export function SettingsView({ plan = 'starter' }) {
             </div>
           </Card>
 
-          <Card title="Ayrshare — Multi-Platform via 1 Integrasi" desc="Alternatif terpadu: hubungkan Instagram, Facebook, YouTube & TikTok via Ayrshare (tanpa perlu OAuth manual per platform)">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-sm">A</div>
-              <div className="flex-1 min-w-0">
-                {!ayr?.configured ? (
-                  <>
-                    <div className="font-medium text-ink">Kredensial Ayrshare belum diset</div>
-                    <div className="text-xs text-ink-muted">Set env <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_API_KEY</code>, <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_DOMAIN</code>, <code className="bg-ink/[0.05] px-1 rounded text-[10px]">AYRSHARE_PRIVATE_KEY</code></div>
-                  </>
-                ) : !ayr?.hasProfile ? (
-                  <>
-                    <div className="font-medium text-ink">Belum ada profile Ayrshare</div>
-                    <div className="text-xs text-ink-muted">Klik "Hubungkan via Ayrshare" untuk membuat profile & mendapatkan URL koneksi akun sosial</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-sm font-medium text-emerald-700">✅ Profile aktif · {ayr.profile?.title}</div>
-                    <div className="text-xs text-ink-muted">
-                      {ayr.activeSocialAccounts?.length ? (
-                        <>Akun terhubung: {ayr.activeSocialAccounts.join(', ')} · Post bulan ini {ayr.monthlyPostCount || 0}{ayr.monthlyPostQuota ? `/${ayr.monthlyPostQuota}` : ''}</>
-                      ) : (
-                        <>Belum ada akun sosial di-link. Klik "Hubungkan via Ayrshare" untuk membuka halaman koneksi.</>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-              {ayr?.hasProfile ? (
-                <>
-                  <button onClick={startAyrConnect} disabled={ayrBusy} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">{ayrBusy ? 'Memproses…' : '🔗 Hubungkan / Tambah Akun'}</button>
-                  <button onClick={refreshAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-ink/[0.05] hover:bg-ink/[0.08] disabled:opacity-60">🔄 Refresh</button>
-                  <button onClick={disconnectAyr} disabled={ayrBusy} className="text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60">✂️ Reset Profile</button>
-                </>
-              ) : ayr?.configured ? (
-                <button onClick={startAyrConnect} disabled={ayrBusy} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">{ayrBusy ? 'Memproses…' : '🚀 Hubungkan via Ayrshare'}</button>
-              ) : null}
-            </div>
-            {ayr?.activeSocialAccounts?.length > 0 && (
-              <div className="mt-4 border-t border-ink/[0.06] pt-3">
-                <div className="text-[11px] text-ink-muted font-semibold mb-2">Akun Sosial via Ayrshare</div>
-                <div className="flex flex-wrap gap-2">{ayr.activeSocialAccounts.map((s,i)=>(
-                  <span key={s} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{s}{ayr.displayNames?.[i] ? ` — ${ayr.displayNames[i]}` : ''}
-                  </span>
-                ))}</div>
-              </div>
-            )}
-            <div className="mt-3 text-[11px] text-ink-muted">
-              💡 Ayrshare menyatukan Instagram, Facebook, YouTube & TikTok dalam satu API. Ideal untuk kondisi dimana OAuth manual sulit disiapkan.
-            </div>
-          </Card>
         </div>
       )}
 
@@ -1567,8 +1478,8 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
             </select>
           </Field>
 
-          {/* Publish via Ayrshare toggle */}
-          <div className="pt-2 border-t border-ink/[0.06]">
+          {/* Publish langsung — hanya muncul bila server punya kredensial Ayrshare */}
+          {ayrStatus?.configured && <div className="pt-2 border-t border-ink/[0.06]">
             <button type="button" onClick={()=>setShowPublish(v=>!v)} className="w-full flex items-center gap-2 text-sm font-semibold text-indigo-700 hover:text-indigo-900">
               <span className="text-lg">{showPublish?'▾':'▸'}</span>
               🚀 Publish Multi-Platform via Ayrshare
@@ -1643,7 +1554,7 @@ function CalendarModal({ modal, onClose, onSave, onDelete, platforms }) {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
         </div>
         <div className="p-4 bg-paper/50 border-t border-ink/[0.06] flex items-center justify-end gap-2">
           {it && <button onClick={()=>onDelete(it.id)} className="mr-auto text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100">🗑 Hapus</button>}

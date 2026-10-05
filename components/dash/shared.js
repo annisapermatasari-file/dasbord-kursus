@@ -99,11 +99,11 @@ export function KpiCard({ label, value, prev, spark = [], format='num', prefix='
           </div>
         )}
       </div>
-      <div className={`mt-3 inline-flex items-center gap-1 text-[12px] font-semibold tabular whitespace-nowrap ${up ? 'text-growth' : 'text-alert'}`}>
+      {prev != null && <div className={`mt-3 inline-flex items-center gap-1 text-[12px] font-semibold tabular whitespace-nowrap ${up ? 'text-growth' : 'text-alert'}`}>
         {up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
         {up ? '+' : ''}{change}%
         <span className="text-[11.5px] text-ink-muted font-normal ml-0.5">dari periode lalu</span>
-      </div>
+      </div>}
     </div>
   )
 }
