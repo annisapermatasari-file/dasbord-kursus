@@ -126,6 +126,7 @@ export async function GET(request, { params }) {
   const path = (p?.path || []).join('/')
   try {
     if (path === '' || path === 'health') return NextResponse.json({ status: 'ok' })
+    if (path === 'health/deps') return healthDeps()
 
     if (path === 'oauth/config') return oauthConfig(request)
     if (/^oauth\/(meta|google|tiktok)\/start$/.test(path)) {
@@ -753,11 +754,33 @@ async function createUser(request) {
       },
     })
   } catch (e) {
+    console.error('[users] createUser gagal:', e?.message, e?.stack)
     return NextResponse.json(
       { error: e?.message || 'Gagal menyimpan user' },
       { status: 500 }
     )
   }
+}
+
+/**
+ * Cek ketersediaan dependensi (tanpa membocorkan data): Supabase tabel users,
+ * kolom yang dibutuhkan aplikasi, MongoDB, dan env wajib.
+ */
+async function healthDeps() {
+  const out = { supabase: 'ok', mongo: 'ok', env: {} }
+  try {
+    const { supabase } = await import('@/lib/supabase')
+    const cols = ['email','password','role','plan','org_owner_email','business_name','jabatan','initial','active','seeded','reset_code','reset_expires','updated_at','created_at']
+    const missing = []
+    for (const c of cols) {
+      const { error } = await supabase().from('users').select(c).limit(1)
+      if (error) missing.push(`${c}: ${error.message}`.slice(0, 160))
+    }
+    if (missing.length) out.supabase = { missingOrError: missing }
+  } catch (e) { out.supabase = String(e?.message || e).slice(0, 200) }
+  try { await (await db()).command({ ping: 1 }) } catch (e) { out.mongo = String(e?.message || e).slice(0, 200) }
+  for (const k of ['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MONGO_URL','SESSION_SECRET','OAUTH_STATE_SECRET']) out.env[k] = !!process.env[k]
+  return NextResponse.json(out)
 }
 
 async function authLogin(request) {
@@ -792,6 +815,7 @@ async function authLogin(request) {
     res.cookies.set(SESSION_COOKIE, createSessionToken(doc), sessionCookieOptions())
     return res
   } catch (e) {
+    console.error('[auth] login gagal:', e?.message)
     return NextResponse.json({ error: e?.message || 'Gagal memproses login' }, { status: 500 })
   }
 }
