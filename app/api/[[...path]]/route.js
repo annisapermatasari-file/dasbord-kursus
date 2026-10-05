@@ -779,7 +779,15 @@ async function healthDeps() {
     if (missing.length) out.supabase = { missingOrError: missing }
   } catch (e) { out.supabase = String(e?.message || e).slice(0, 200) }
   try { await (await db()).command({ ping: 1 }) } catch (e) { out.mongo = String(e?.message || e).slice(0, 200) }
-  for (const k of ['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','MONGO_URL','SESSION_SECRET','OAUTH_STATE_SECRET']) out.env[k] = !!process.env[k]
+  for (const k of ['SUPABASE_URL','NEXT_PUBLIC_SUPABASE_URL','SUPABASE_KEY','SUPABASE_SERVICE_ROLE_KEY','MONGO_URL','SESSION_SECRET','OAUTH_STATE_SECRET']) out.env[k] = !!process.env[k]
+  // Info non-rahasia untuk menemukan project: host Supabase (publik) dan klaim `ref` di payload JWT kunci (bukan tanda tangannya)
+  try { out.supabaseHost = new URL((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()).hostname } catch { out.supabaseHost = null }
+  try {
+    const k = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '').trim()
+    const payload = JSON.parse(Buffer.from(k.split('.')[1] || '', 'base64url').toString('utf8'))
+    out.supabaseKeyProject = payload?.ref || null
+  } catch { out.supabaseKeyProject = null }
+  try { out.mongoHost = (process.env.MONGO_URL || '').split('@').pop().split('/')[0].split('?')[0] || null } catch { out.mongoHost = null }
   return NextResponse.json(out)
 }
 
